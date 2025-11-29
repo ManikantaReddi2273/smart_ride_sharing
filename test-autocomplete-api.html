@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autocomplete API Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1, h2 {
+            color: #333;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        .result {
+            background: #f9f9f9;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border-left: 4px solid #4CAF50;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .error {
+            border-left-color: #f44336;
+            background: #ffebee;
+        }
+        .success {
+            border-left-color: #4CAF50;
+            background: #e8f5e9;
+        }
+        .warning {
+            border-left-color: #ff9800;
+            background: #fff3e0;
+        }
+        .suggestion-item {
+            padding: 10px;
+            margin: 5px 0;
+            background: #f0f0f0;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .suggestion-item:hover {
+            background: #e0e0e0;
+        }
+        .coords {
+            color: #2196F3;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Autocomplete API Test Tool</h1>
+    <p>This tool tests the autocomplete API and coordinate extraction to verify the fix is working.</p>
+
+    <div class="test-section">
+        <h2>Test 1: Autocomplete API</h2>
+        <input type="text" id="autocompleteInput" placeholder="Type location (e.g., Nuzvid, Vijayawada)" />
+        <button onclick="testAutocomplete()">Test Autocomplete</button>
+        <div id="autocompleteResult"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 2: Coordinate Validation</h2>
+        <button onclick="testCoordinateValidation()">Test India Boundary Validation</button>
+        <div id="validationResult"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 3: Distance Calculation</h2>
+        <input type="text" id="sourceInput" placeholder="Source location" />
+        <input type="text" id="destInput" placeholder="Destination location" />
+        <button onclick="testDistanceCalculation()">Calculate Distance</button>
+        <div id="distanceResult"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 4: Full Flow Simulation</h2>
+        <button onclick="testFullFlow()">Simulate Complete Flow</button>
+        <div id="flowResult"></div>
+    </div>
+
+    <script>
+        // API Base URL - Update this to match your backend
+        const API_BASE_URL = 'http://localhost:8082/api/rides';
+        
+        // Test coordinates
+        const TEST_COORDS = {
+            nuzvid: { lat: 16.7890, lon: 80.8450 },
+            vijayawada: { lat: 16.5062, lon: 80.6480 },
+            vizianagaram: { lat: 18.1166, lon: 83.4115 }
+        };
+
+        function displayResult(elementId, message, type = 'result') {
+            const element = document.getElementById(elementId);
+            element.className = `result ${type}`;
+            element.textContent = message;
+        }
+
+        async function testAutocomplete() {
+            const query = document.getElementById('autocompleteInput').value.trim();
+            if (!query || query.length < 2) {
+                displayResult('autocompleteResult', '❌ Please enter at least 2 characters', 'error');
+                return;
+            }
+
+            displayResult('autocompleteResult', '⏳ Fetching suggestions...', 'warning');
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/address-suggestions?query=${encodeURIComponent(query)}`);
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.message || 'API request failed');
+                }
+
+                if (!Array.isArray(data) || data.length === 0) {
+                    displayResult('autocompleteResult', '⚠️ No suggestions found. Check:\n1. Backend is running\n2. API key is configured\n3. Query is valid', 'warning');
+                    return;
+                }
+
+                let result = `✅ Found ${data.length} suggestion(s):\n\n`;
+                
+                data.forEach((suggestion, index) => {
+                    result += `Suggestion ${index + 1}:\n`;
+                    result += `  Label: ${suggestion.label || suggestion.name}\n`;
+                    result += `  Country Code: ${suggestion.countryCode || 'MISSING'}\n`;
+                    result += `  Country: ${suggestion.country || 'MISSING'}\n`;
+                    
+                    if (suggestion.latitude && suggestion.longitude) {
+                        result += `  Coordinates: [lat=${suggestion.latitude}, lon=${suggestion.longitude}]\n`;
+                        
+                        // Validate India boundaries
+                        const inIndia = suggestion.longitude >= 68 && suggestion.longitude <= 97 && 
+                                       suggestion.latitude >= 6 && suggestion.latitude <= 37;
+                        result += `  Within India: ${inIndia ? '✅ YES' : '❌ NO'}\n`;
+                        
+                        if (suggestion.countryCode !== 'IN') {
+                            result += `  ⚠️ WARNING: Country code is not 'IN'!\n`;
+                        }
+                    } else {
+                        result += `  ❌ MISSING COORDINATES!\n`;
+                    }
+                    result += '\n';
+                });
+
+                displayResult('autocompleteResult', result, data.length > 0 ? 'success' : 'warning');
+            } catch (error) {
+                displayResult('autocompleteResult', `❌ Error: ${error.message}\n\nCheck:\n1. Backend is running on ${API_BASE_URL}\n2. CORS is enabled\n3. Network connection`, 'error');
+            }
+        }
+
+        function testCoordinateValidation() {
+            const testCoords = [
+                { name: 'Nuzvid', lat: 16.7890, lon: 80.8450, expected: true },
+                { name: 'Vijayawada', lat: 16.5062, lon: 80.6480, expected: true },
+                { name: 'Mumbai', lat: 19.0760, lon: 72.8777, expected: true },
+                { name: 'Germany (WRONG)', lat: 52.2233, lon: 10.4211, expected: false },
+                { name: 'USA (WRONG)', lat: 40.7128, lon: -74.0060, expected: false }
+            ];
+
+            let result = 'Coordinate Validation Test:\n\n';
+            
+            testCoords.forEach(coord => {
+                const inIndia = coord.lon >= 68 && coord.lon <= 97 && coord.lat >= 6 && coord.lat <= 37;
+                const status = inIndia === coord.expected ? '✅' : '❌';
+                result += `${status} ${coord.name}: [lat=${coord.lat}, lon=${coord.lon}] - Valid: ${inIndia} (Expected: ${coord.expected})\n`;
+            });
+
+            displayResult('validationResult', result, 'success');
+        }
+
+        async function testDistanceCalculation() {
+            const source = document.getElementById('sourceInput').value.trim();
+            const dest = document.getElementById('destInput').value.trim();
+
+            if (!source || !dest) {
+                displayResult('distanceResult', '❌ Please enter both source and destination', 'error');
+                return;
+            }
+
+            displayResult('distanceResult', '⏳ Calculating distance...', 'warning');
+
+            try {
+                // First, get coordinates from autocomplete
+                const sourceResponse = await fetch(`${API_BASE_URL}/address-suggestions?query=${encodeURIComponent(source)}`);
+                const sourceData = await sourceResponse.json();
+                
+                const destResponse = await fetch(`${API_BASE_URL}/address-suggestions?query=${encodeURIComponent(dest)}`);
+                const destData = await destResponse.json();
+
+                if (!sourceData || sourceData.length === 0 || !sourceData[0].latitude) {
+                    displayResult('distanceResult', '❌ Could not get source coordinates from autocomplete', 'error');
+                    return;
+                }
+
+                if (!destData || destData.length === 0 || !destData[0].latitude) {
+                    displayResult('distanceResult', '❌ Could not get destination coordinates from autocomplete', 'error');
+                    return;
+                }
+
+                const sourceCoords = { lat: sourceData[0].latitude, lon: sourceData[0].longitude };
+                const destCoords = { lat: destData[0].latitude, lon: destData[0].longitude };
+
+                // Build API URL with coordinates
+                const params = new URLSearchParams({
+                    source: sourceData[0].label,
+                    destination: destData[0].label,
+                    sourceLat: sourceCoords.lat,
+                    sourceLon: sourceCoords.lon,
+                    destLat: destCoords.lat,
+                    destLon: destCoords.lon
+                });
+
+                const fareResponse = await fetch(`${API_BASE_URL}/calculate-fare?${params}`);
+                const fareData = await fareResponse.json();
+
+                if (!fareResponse.ok) {
+                    throw new Error(fareData.message || 'Distance calculation failed');
+                }
+
+                let result = '✅ Distance Calculation Results:\n\n';
+                result += `Source: ${sourceData[0].label}\n`;
+                result += `  Coordinates: [lat=${sourceCoords.lat}, lon=${sourceCoords.lon}]\n`;
+                result += `Destination: ${destData[0].label}\n`;
+                result += `  Coordinates: [lat=${destCoords.lat}, lon=${destCoords.lon}]\n\n`;
+                result += `Distance: ${fareData.distanceKm} km\n`;
+                result += `Duration: ${fareData.estimatedDurationText}\n`;
+                result += `Total Fare: ₹${fareData.totalFare}\n`;
+                result += `Base Fare: ₹${fareData.baseFare}\n`;
+                result += `Rate per km: ₹${fareData.ratePerKm}\n`;
+
+                displayResult('distanceResult', result, 'success');
+            } catch (error) {
+                displayResult('distanceResult', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testFullFlow() {
+            displayResult('flowResult', '⏳ Testing complete flow...', 'warning');
+
+            try {
+                // Step 1: Test autocomplete for "Nuzvid"
+                const sourceQuery = 'Nuzvid';
+                const sourceResponse = await fetch(`${API_BASE_URL}/address-suggestions?query=${encodeURIComponent(sourceQuery)}`);
+                const sourceData = await sourceResponse.json();
+
+                if (!sourceData || sourceData.length === 0) {
+                    displayResult('flowResult', '❌ Step 1 Failed: No source suggestions', 'error');
+                    return;
+                }
+
+                const sourceSelected = sourceData[0];
+                if (!sourceSelected.latitude || !sourceSelected.longitude) {
+                    displayResult('flowResult', '❌ Step 1 Failed: Source missing coordinates', 'error');
+                    return;
+                }
+
+                if (sourceSelected.countryCode !== 'IN') {
+                    displayResult('flowResult', `❌ Step 1 Failed: Source country code is '${sourceSelected.countryCode}', expected 'IN'`, 'error');
+                    return;
+                }
+
+                // Step 2: Test autocomplete for "Vijayawada"
+                const destQuery = 'Vijayawada';
+                const destResponse = await fetch(`${API_BASE_URL}/address-suggestions?query=${encodeURIComponent(destQuery)}`);
+                const destData = await destResponse.json();
+
+                if (!destData || destData.length === 0) {
+                    displayResult('flowResult', '❌ Step 2 Failed: No destination suggestions', 'error');
+                    return;
+                }
+
+                const destSelected = destData[0];
+                if (!destSelected.latitude || !destSelected.longitude) {
+                    displayResult('flowResult', '❌ Step 2 Failed: Destination missing coordinates', 'error');
+                    return;
+                }
+
+                if (destSelected.countryCode !== 'IN') {
+                    displayResult('flowResult', `❌ Step 2 Failed: Destination country code is '${destSelected.countryCode}', expected 'IN'`, 'error');
+                    return;
+                }
+
+                // Step 3: Calculate distance with coordinates
+                const params = new URLSearchParams({
+                    source: sourceSelected.label,
+                    destination: destSelected.label,
+                    sourceLat: sourceSelected.latitude,
+                    sourceLon: sourceSelected.longitude,
+                    destLat: destSelected.latitude,
+                    destLon: destSelected.longitude
+                });
+
+                const fareResponse = await fetch(`${API_BASE_URL}/calculate-fare?${params}`);
+                const fareData = await fareResponse.json();
+
+                if (!fareResponse.ok) {
+                    throw new Error(fareData.message || 'Distance calculation failed');
+                }
+
+                let result = '✅ Complete Flow Test Results:\n\n';
+                result += 'Step 1: Source Autocomplete ✅\n';
+                result += `  Selected: ${sourceSelected.label}\n`;
+                result += `  Coordinates: [lat=${sourceSelected.latitude}, lon=${sourceSelected.longitude}]\n`;
+                result += `  Country Code: ${sourceSelected.countryCode}\n\n`;
+                
+                result += 'Step 2: Destination Autocomplete ✅\n';
+                result += `  Selected: ${destSelected.label}\n`;
+                result += `  Coordinates: [lat=${destSelected.latitude}, lon=${destSelected.longitude}]\n`;
+                result += `  Country Code: ${destSelected.countryCode}\n\n`;
+                
+                result += 'Step 3: Distance Calculation ✅\n';
+                result += `  Distance: ${fareData.distanceKm} km\n`;
+                result += `  Duration: ${fareData.estimatedDurationText}\n`;
+                result += `  Fare: ₹${fareData.totalFare}\n\n`;
+                
+                result += '🎉 All steps completed successfully!';
+
+                displayResult('flowResult', result, 'success');
+            } catch (error) {
+                displayResult('flowResult', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Allow Enter key to trigger autocomplete test
+        document.getElementById('autocompleteInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                testAutocomplete();
+            }
+        });
+    </script>
+</body>
+</html>
