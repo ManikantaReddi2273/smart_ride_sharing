@@ -41,11 +41,11 @@ public class GatewayConfig {
                     .uri("lb://ride-service")
                 )
                 
-                // Payment Service Route (Future)
-                // .route("payment-service", r -> r
-                //     .path("/api/payments/**")
-                //     .uri("lb://payment-service")
-                // )
+                // Payment Service Route
+                .route("payment-service", r -> r
+                    .path("/api/payments/**")
+                    .uri("lb://payment-service")
+                )
                 
                 // Route Service Route (Future)
                 // .route("route-service", r -> r

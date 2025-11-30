@@ -1,0 +1,237 @@
+# ============================================
+# Smart Ride Sharing System - Root .gitignore
+# ============================================
+
+# ============================================
+# Java / Spring Boot
+# ============================================
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+*.log
+*.ctxt
+.mtj.tmp/
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+.settings/
+.loadpath
+.recommenders
+
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# ============================================
+# React / Node.js / Frontend
+# ============================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Build outputs
+dist/
+dist-ssr/
+build/
+*.local
+
+# Vite
+.vite/
+vite.config.js.timestamp-*
+
+# ============================================
+# IDE / Editor
+# ============================================
+# IntelliJ IDEA
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+
+# Eclipse
+.metadata/
+.classpath
+.project
+.settings/
+bin/
+tmp/
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+.loadpath
+.recommenders
+
+# VS Code
+.vscode/
+!.vscode/extensions.json
+*.code-workspace
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+# ============================================
+# OS Files
+# ============================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ============================================
+# Logs
+# ============================================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+*.log.*
+
+# ============================================
+# Environment / Config
+# ============================================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+*.env.*
+!.env.example
+
+# ============================================
+# Database
+# ============================================
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+
+# ============================================
+# Testing
+# ============================================
+coverage/
+.nyc_output/
+*.lcov
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+.hypothesis/
+
+# ============================================
+# Temporary / Cache
+# ============================================
+*.cache
+.cache/
+.parcel-cache/
+.next/
+.nuxt/
+.vuepress/dist/
+.serverless/
+.fusebox/
+.dynamodb/
+.tern-port
+.tern-project
+*.tsbuildinfo
+
+# ============================================
+# Large Files / Media (if accidentally added)
+# ============================================
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+*.mp4
+*.avi
+*.mov
+*.wmv
+*.flv
+*.webm
+*.mkv
+
+# ============================================
+# Fonts (if too large, uncomment below)
+# ============================================
+# font/
+# *.ttf
+# *.otf
+# *.woff
+# *.woff2
+
+# ============================================
+# Project Specific
+# ============================================
+# Test files (if not needed in repo)
+# test-*.html
+# test-*.js
+# test-*.ps1
+
+# Assets (if too large)
+# assets/*.png
+# assets/*.jpg
+# assets/*.jpeg
+# assets/*.gif

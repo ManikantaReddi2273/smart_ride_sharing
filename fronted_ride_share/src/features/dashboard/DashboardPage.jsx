@@ -166,7 +166,12 @@ const DashboardPage = () => {
       )}
 
       {/* Show combined dashboard for all users - they can both post and book rides */}
-      <DriverDashboard rides={myRides} bookings={myBookings} loading={status === 'loading'} />
+      <DriverDashboard 
+        rides={myRides} 
+        bookings={myBookings} 
+        loading={status === 'loading'}
+        userId={user?.id}
+      />
 
       {/* Booking Dialog */}
       <Dialog open={Boolean(selectedRide)} onClose={onCloseBooking} fullWidth maxWidth="sm">

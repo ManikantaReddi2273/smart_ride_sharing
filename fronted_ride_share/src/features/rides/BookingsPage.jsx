@@ -24,7 +24,11 @@ import { useDispatch, useSelector } from 'react-redux'
 
 import PageContainer from '../../components/common/PageContainer'
 import EmptyState from '../../components/common/EmptyState'
+import PaymentStatusBadge from '../../components/payments/PaymentStatusBadge'
+import PaymentDialog from '../../components/payments/PaymentDialog'
 import { fetchMyBookings } from './rideSlice'
+import { getPaymentOrderForRetry } from '../payments/paymentSlice'
+import { useState } from 'react'
 
 const statusChipColor = {
   CONFIRMED: 'success',
@@ -65,6 +69,9 @@ const formatTime = (value) => {
 const BookingsPage = () => {
   const dispatch = useDispatch()
   const { myBookings, status, error } = useSelector((state) => state.rides)
+  const { paymentDetails } = useSelector((state) => state.payments)
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
+  const [selectedBooking, setSelectedBooking] = useState(null)
 
   useEffect(() => {
     dispatch(fetchMyBookings())
@@ -83,6 +90,40 @@ const BookingsPage = () => {
   )
 
   const handleRefresh = () => {
+    dispatch(fetchMyBookings())
+  }
+
+  const handleRetryPayment = async (booking) => {
+    setSelectedBooking(booking)
+    
+    // If booking already has paymentOrder with keyId, use it
+    // Otherwise, fetch payment order for retry
+    if (booking.paymentId && (!booking.paymentOrder || !booking.paymentOrder.keyId)) {
+      try {
+        const paymentOrderAction = await dispatch(getPaymentOrderForRetry(booking.paymentId))
+        if (paymentOrderAction.type.endsWith('fulfilled')) {
+          // Update booking with payment order
+          const updatedBooking = {
+            ...booking,
+            paymentOrder: paymentOrderAction.payload,
+          }
+          setSelectedBooking(updatedBooking)
+        } else {
+          console.error('Failed to fetch payment order:', paymentOrderAction.payload)
+          alert('Failed to load payment details. Please try again.')
+          return // Don't open dialog if we can't get payment order
+        }
+      } catch (error) {
+        console.error('Failed to fetch payment order:', error)
+        alert('Failed to load payment details. Please try again.')
+        return
+      }
+    }
+    
+    setPaymentDialogOpen(true)
+  }
+
+  const handlePaymentSuccess = () => {
     dispatch(fetchMyBookings())
   }
 
@@ -153,7 +194,7 @@ const BookingsPage = () => {
                           </Typography>
                         </Box>
                       </Stack>
-                      <Stack direction="row" spacing={1}>
+                      <Stack direction="row" spacing={1} flexWrap="wrap" gap={1}>
                         <Chip
                           label={booking.status}
                           color={statusChipColor[booking.status] ?? 'default'}
@@ -164,6 +205,15 @@ const BookingsPage = () => {
                           icon={<EventSeatRoundedIcon />}
                           size="small"
                         />
+                        {booking.paymentId && (
+                          <PaymentStatusBadge 
+                            status={
+                              paymentDetails?.id === booking.paymentId 
+                                ? paymentDetails?.status 
+                                : 'PENDING'
+                            } 
+                          />
+                        )}
                       </Stack>
                     </Stack>
                   </Grid>
@@ -237,36 +287,64 @@ const BookingsPage = () => {
                   </Box>
                 )}
 
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
-                  <Avatar sx={{ bgcolor: 'primary.light', color: 'primary.main' }}>
-                    <DirectionsCarRoundedIcon />
-                  </Avatar>
-                  <Box flex={1}>
-                    <Typography variant="subtitle2" color="text.secondary">
-                      Driver
-                    </Typography>
-                    <Typography variant="body1" fontWeight={600}>
-                      {ride.driverName || 'Driver details unavailable'}
-                    </Typography>
-                  </Box>
-                  <Stack direction="row" spacing={2}>
-                    {ride.vehicleModel && (
-                      <Chip
-                        variant="outlined"
-                        icon={<DirectionsCarRoundedIcon fontSize="small" />}
-                        label={ride.vehicleModel}
-                      />
-                    )}
-                    {ride.vehicleLicensePlate && (
-                      <Chip variant="outlined" label={ride.vehicleLicensePlate} />
-                    )}
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center" justifyContent="space-between">
+                  <Stack direction="row" spacing={2} alignItems="center" flex={1}>
+                    <Avatar sx={{ bgcolor: 'primary.light', color: 'primary.main' }}>
+                      <DirectionsCarRoundedIcon />
+                    </Avatar>
+                    <Box>
+                      <Typography variant="subtitle2" color="text.secondary">
+                        Driver
+                      </Typography>
+                      <Typography variant="body1" fontWeight={600}>
+                        {ride.driverName || 'Driver details unavailable'}
+                      </Typography>
+                    </Box>
+                    <Stack direction="row" spacing={2}>
+                      {ride.vehicleModel && (
+                        <Chip
+                          variant="outlined"
+                          icon={<DirectionsCarRoundedIcon fontSize="small" />}
+                          label={ride.vehicleModel}
+                        />
+                      )}
+                      {ride.vehicleLicensePlate && (
+                        <Chip variant="outlined" label={ride.vehicleLicensePlate} />
+                      )}
+                    </Stack>
                   </Stack>
+                  {booking.status === 'PENDING' && booking.paymentId && (
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      onClick={() => handleRetryPayment(booking)}
+                    >
+                      Complete Payment
+                    </Button>
+                  )}
                 </Stack>
               </Paper>
             )
           })}
         </Stack>
       )}
+
+      {/* Payment Dialog */}
+      <PaymentDialog
+        open={paymentDialogOpen}
+        onClose={() => {
+          setPaymentDialogOpen(false)
+          setSelectedBooking(null)
+        }}
+        booking={selectedBooking}
+        paymentOrder={
+          selectedBooking?.paymentOrder || 
+          (paymentDetails?.paymentOrder && paymentDetails?.id === selectedBooking?.paymentId 
+            ? paymentDetails.paymentOrder 
+            : null)
+        }
+        onPaymentSuccess={handlePaymentSuccess}
+      />
     </PageContainer>
   )
 }

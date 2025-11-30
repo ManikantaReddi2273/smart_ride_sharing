@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 
 /**
  * Booking Response DTO
@@ -32,6 +33,10 @@ public class BookingResponse {
     private Double passengerDistanceKm;
     private Double passengerFare;
     private String currency;
+    
+    // Payment details (for payment integration)
+    private Long paymentId;
+    private Map<String, Object> paymentOrder; // Razorpay order details (orderId, keyId, amount, etc.)
     
     // Ride details (optional - can be included in response)
     private RideResponse rideDetails;

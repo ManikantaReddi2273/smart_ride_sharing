@@ -18,13 +18,14 @@ import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded'
 
 import StatCard from '../../../components/common/StatCard'
 import EmptyState from '../../../components/common/EmptyState'
+import WalletCard from '../../../components/payments/WalletCard'
 
 const formatDate = (value) => {
   if (!value) return '--'
   return new Date(value).toLocaleString()
 }
 
-const DriverDashboard = ({ rides, bookings, loading }) => {
+const DriverDashboard = ({ rides, bookings, loading, userId }) => {
   const totalRides = rides.length
   const activeBookings = bookings.filter((b) => b.status === 'CONFIRMED' || b.status === 'PENDING').length
   const completedRides = rides.filter((ride) => ride.status === 'COMPLETED').length
@@ -73,6 +74,13 @@ const DriverDashboard = ({ rides, bookings, loading }) => {
           chip={<Chip label={`${completedRides} reviews`} size="small" />}
         />
       </Stack>
+
+      {/* Wallet Card for Drivers */}
+      {userId && (
+        <Box sx={{ mb: 3 }}>
+          <WalletCard userId={userId} />
+        </Box>
+      )}
 
       <Card sx={{ mb: 3 }}>
         <CardContent>

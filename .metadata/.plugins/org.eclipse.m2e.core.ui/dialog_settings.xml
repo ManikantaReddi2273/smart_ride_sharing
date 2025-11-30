@@ -2,6 +2,7 @@
 <section name="Workbench">
 	<section name="MavenProjectImportWizardPage">
 		<list key="rootDirectory">
+			<item value="C:\Users\ManishReddy\OneDrive\Desktop\RIDE_SHARING\payment-service"/>
 			<item value="C:\Users\ManishReddy\OneDrive\Desktop\RIDE_SHARING"/>
 		</list>
 		<list key="projectNameTemplate">

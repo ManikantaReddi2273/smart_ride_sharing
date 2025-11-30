@@ -37,7 +37,9 @@ import PageContainer from '../../components/common/PageContainer'
 import EmptyState from '../../components/common/EmptyState'
 import LoadingOverlay from '../../components/common/LoadingOverlay'
 import RideCard from '../../components/rides/RideCard'
+import PaymentDialog from '../../components/payments/PaymentDialog'
 import { bookRide, searchRides } from './rideSlice'
+import { getPaymentOrderForRetry } from '../payments/paymentSlice'
 
 const schema = yup.object().shape({
   source: yup.string().required('Source is required'),
@@ -63,6 +65,8 @@ const RideSearchPage = () => {
   const { searchResults, status, lastSearchCriteria, error } = useSelector((state) => state.rides)
   const [selectedRide, setSelectedRide] = useState(null)
   const [filtersExpanded, setFiltersExpanded] = useState(false)
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
+  const [createdBooking, setCreatedBooking] = useState(null)
 
   const {
     register,
@@ -147,6 +151,7 @@ const RideSearchPage = () => {
 
   const onConfirmBooking = (values) => {
     if (!selectedRide) return
+    
     dispatch(
       bookRide({
         rideId: selectedRide.id,
@@ -157,13 +162,107 @@ const RideSearchPage = () => {
       }),
     ).then((action) => {
       if (action.type.endsWith('fulfilled')) {
-        onCloseBooking()
-        // Refresh search results to update available seats
-        if (lastSearchCriteria) {
-          dispatch(searchRides(lastSearchCriteria))
+        const bookingResponse = action.payload
+        
+        console.log('✅ Booking created successfully:', bookingResponse)
+        console.log('📦 Payment Order:', bookingResponse.paymentOrder)
+        console.log('💰 Payment ID:', bookingResponse.paymentId)
+        
+        // Check if payment order is present
+        const paymentOrder = bookingResponse.paymentOrder
+        const orderId = paymentOrder?.orderId ?? paymentOrder?.order_id
+        const hasValidPaymentOrder = paymentOrder && orderId
+        
+        if (hasValidPaymentOrder) {
+          console.log('✅ Payment order found, opening payment dialog...')
+          
+          // Normalize paymentOrder keys to camelCase for consistency
+          const normalizedPaymentOrder = {
+            paymentId: paymentOrder.paymentId || paymentOrder.payment_id || bookingResponse.paymentId,
+            orderId: paymentOrder.orderId || paymentOrder.order_id,
+            amount: paymentOrder.amount,
+            currency: paymentOrder.currency || 'INR',
+            keyId: paymentOrder.keyId || paymentOrder.key_id,
+            bookingId: paymentOrder.bookingId || paymentOrder.booking_id || bookingResponse.id,
+          }
+          
+          // Update booking response with normalized payment order
+          const updatedBooking = {
+            ...bookingResponse,
+            paymentOrder: normalizedPaymentOrder,
+          }
+          
+          // Set booking and close booking dialog
+          setCreatedBooking(updatedBooking)
+          onCloseBooking()
+          
+          // Open payment dialog with a small delay to ensure booking dialog closes first
+          setTimeout(() => {
+            console.log('🚀 Opening payment dialog now...')
+            setPaymentDialogOpen(true)
+            console.log('✅ Payment dialog opened for booking:', updatedBooking.id)
+          }, 100)
+        } else {
+          // No payment order - try to fetch it if paymentId exists
+          if (bookingResponse.paymentId) {
+            console.log('🔄 Payment ID found, attempting to fetch payment order...')
+            dispatch(getPaymentOrderForRetry(bookingResponse.paymentId))
+              .then((paymentOrderAction) => {
+                if (paymentOrderAction.type.endsWith('fulfilled')) {
+                  const fetchedPaymentOrder = paymentOrderAction.payload
+                  console.log('✅ Payment order fetched:', fetchedPaymentOrder)
+                  
+                  const updatedBooking = {
+                    ...bookingResponse,
+                    paymentOrder: fetchedPaymentOrder,
+                  }
+                  
+                  setCreatedBooking(updatedBooking)
+                  onCloseBooking()
+                  
+                  setTimeout(() => {
+                    console.log('🚀 Opening payment dialog after fetching order...')
+                    setPaymentDialogOpen(true)
+                    console.log('✅ Payment dialog opened after fetching order for booking:', updatedBooking.id)
+                  }, 100)
+                } else {
+                  console.error('❌ Failed to fetch payment order:', paymentOrderAction.payload)
+                  // Close booking dialog and refresh search results
+                  onCloseBooking()
+                  if (lastSearchCriteria) {
+                    dispatch(searchRides(lastSearchCriteria))
+                  }
+                }
+              })
+              .catch((error) => {
+                console.error('❌ Error fetching payment order:', error)
+                // Close booking dialog and refresh search results
+                onCloseBooking()
+                if (lastSearchCriteria) {
+                  dispatch(searchRides(lastSearchCriteria))
+                }
+              })
+          } else {
+            // No payment information - close booking dialog and refresh
+            console.warn('⚠️ No payment information in booking response')
+            onCloseBooking()
+            if (lastSearchCriteria) {
+              dispatch(searchRides(lastSearchCriteria))
+            }
+          }
         }
       }
     })
+  }
+  
+  const handlePaymentSuccess = () => {
+    console.log('✅ Payment successful, closing dialogs and refreshing...')
+    setPaymentDialogOpen(false)
+    setCreatedBooking(null)
+    // Refresh search results to update available seats
+    if (lastSearchCriteria) {
+      dispatch(searchRides(lastSearchCriteria))
+    }
   }
 
   const formatDate = (dateString) => {
@@ -497,6 +596,19 @@ const RideSearchPage = () => {
           </DialogActions>
         </Box>
       </Dialog>
+
+      {/* Payment Dialog - Opens automatically after booking confirmation */}
+      <PaymentDialog
+        open={paymentDialogOpen}
+        onClose={() => {
+          console.log('💳 Payment dialog closing...')
+          setPaymentDialogOpen(false)
+          setCreatedBooking(null)
+        }}
+        booking={createdBooking}
+        paymentOrder={createdBooking?.paymentOrder}
+        onPaymentSuccess={handlePaymentSuccess}
+      />
     </PageContainer>
   )
 }

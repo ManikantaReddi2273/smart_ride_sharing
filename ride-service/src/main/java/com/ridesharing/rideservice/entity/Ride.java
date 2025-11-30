@@ -158,6 +158,14 @@ public class Ride {
     private String currency;
     
     /**
+     * Route geometry (polyline) as JSON array of [longitude, latitude] coordinates.
+     * Stored when ride is posted to enable partial route matching.
+     * Format: [[lon1, lat1], [lon2, lat2], ...]
+     */
+    @Column(name = "route_geometry", columnDefinition = "JSON")
+    private String routeGeometry;
+    
+    /**
      * Timestamp when ride was created
      */
     @Column(name = "created_at", nullable = false, updatable = false)

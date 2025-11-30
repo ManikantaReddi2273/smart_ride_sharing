@@ -141,10 +141,34 @@ export const bookRide = createAsyncThunk(
       const { data } = await apiClient.post(endpoints.rides.book(rideId), payload)
       
       console.log('Booking API response:', data)
+      console.log('Payment order details:', data.paymentOrder)
       
       return data
     } catch (error) {
       console.error('Booking API error:', error)
+      console.error('Error response:', error?.response)
+      return rejectWithValue(handleError(error))
+    }
+  },
+)
+
+export const verifyPayment = createAsyncThunk(
+  'rides/verifyPayment',
+  async ({ bookingId, paymentVerificationData }, { rejectWithValue }) => {
+    try {
+      console.log('Verifying payment for bookingId:', bookingId)
+      console.log('Payment verification data:', paymentVerificationData)
+      
+      const { data } = await apiClient.post(
+        endpoints.rides.verifyPayment(bookingId),
+        paymentVerificationData
+      )
+      
+      console.log('Payment verification response:', data)
+      
+      return data
+    } catch (error) {
+      console.error('Payment verification error:', error)
       console.error('Error response:', error?.response)
       return rejectWithValue(handleError(error))
     }
@@ -228,6 +252,24 @@ const ridesSlice = createSlice({
         state.myBookings = [action.payload, ...state.myBookings]
       })
       .addCase(bookRide.rejected, (state, action) => {
+        state.status = 'failed'
+        state.error = action.payload
+      })
+      .addCase(verifyPayment.pending, (state) => {
+        state.status = 'loading'
+        state.error = null
+      })
+      .addCase(verifyPayment.fulfilled, (state, action) => {
+        state.status = 'succeeded'
+        // Update the booking in myBookings if it exists
+        const bookingIndex = state.myBookings.findIndex(b => b.id === action.payload.id)
+        if (bookingIndex !== -1) {
+          state.myBookings[bookingIndex] = action.payload
+        } else {
+          state.myBookings = [action.payload, ...state.myBookings]
+        }
+      })
+      .addCase(verifyPayment.rejected, (state, action) => {
         state.status = 'failed'
         state.error = action.payload
       })

@@ -38,6 +38,8 @@ import { useDispatch, useSelector } from 'react-redux'
 import EmptyState from '../common/EmptyState'
 import RideCard from './RideCard'
 import { bookRide, searchRides, clearRideErrors } from '../../features/rides/rideSlice'
+import { getPaymentOrderForRetry } from '../../features/payments/paymentSlice'
+import PaymentDialog from '../payments/PaymentDialog'
 import { getAddressSuggestions } from '../../api/apiClient'
 
 const formatDate = (dateString) => {
@@ -125,6 +127,11 @@ const SearchDialog = ({ open, onClose }) => {
   const [filtersExpanded, setFiltersExpanded] = useState(false)
   const [bookingDialogOpen, setBookingDialogOpen] = useState(false)
   const [bookingSuccess, setBookingSuccess] = useState(false)
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
+  const [createdBooking, setCreatedBooking] = useState(null)
+  
+  // Note: Payment dialog is now opened directly in onConfirmBooking
+  // No need for useEffect to handle this - it was causing race conditions
   
   // Autocomplete state
   const [sourceSuggestions, setSourceSuggestions] = useState([])
@@ -311,6 +318,8 @@ const SearchDialog = ({ open, onClose }) => {
     if (!selectedRide) return
     setBookingSuccess(false)
     dispatch(clearRideErrors())
+    
+    // Step 1: Create booking (this will initiate payment and return payment order)
     dispatch(
       bookRide({
         rideId: selectedRide.id,
@@ -321,16 +330,163 @@ const SearchDialog = ({ open, onClose }) => {
       }),
     ).then((action) => {
       if (action.type.endsWith('fulfilled')) {
-        setBookingSuccess(true)
-        // Close booking dialog after 2 seconds and refresh search results
-        setTimeout(() => {
-          onCloseBooking()
-          if (lastSearchCriteria) {
-            dispatch(searchRides(lastSearchCriteria))
+        const bookingResponse = action.payload
+        
+        console.log('✅ Booking created successfully:', bookingResponse)
+        console.log('📦 Payment Order:', bookingResponse.paymentOrder)
+        console.log('💰 Payment ID:', bookingResponse.paymentId)
+        
+        // Step 2: If payment order is present, open payment dialog
+        // Check for paymentOrder with orderId (handles both camelCase and snake_case)
+        const paymentOrder = bookingResponse.paymentOrder
+        const orderId = paymentOrder?.orderId ?? paymentOrder?.order_id
+        const hasValidPaymentOrder = paymentOrder && orderId
+        
+        if (hasValidPaymentOrder) {
+          console.log('✅ Payment order found, opening payment dialog...')
+          console.log('🔍 Payment order details:', {
+            orderId: orderId,
+            paymentOrder: paymentOrder,
+            allKeys: Object.keys(paymentOrder || {})
+          })
+          
+          // Normalize paymentOrder keys to camelCase for consistency
+          const normalizedPaymentOrder = {
+            paymentId: paymentOrder.paymentId || paymentOrder.payment_id || bookingResponse.paymentId,
+            orderId: paymentOrder.orderId || paymentOrder.order_id,
+            amount: paymentOrder.amount,
+            currency: paymentOrder.currency || 'INR',
+            keyId: paymentOrder.keyId || paymentOrder.key_id,
+            bookingId: paymentOrder.bookingId || paymentOrder.booking_id || bookingResponse.id,
           }
-        }, 2000)
+          
+          console.log('🔍 Normalized payment order:', normalizedPaymentOrder)
+          
+          // Update booking response with normalized payment order
+          const updatedBooking = {
+            ...bookingResponse,
+            paymentOrder: normalizedPaymentOrder,
+          }
+          
+          console.log('📦 Setting booking with payment order:', updatedBooking)
+          console.log('📦 Updated booking paymentOrder:', updatedBooking.paymentOrder)
+          
+          // IMPORTANT: Set booking FIRST
+          setCreatedBooking(updatedBooking)
+          
+          // Close booking dialog
+          onCloseBooking()
+          
+          // OPEN PAYMENT DIALOG DIRECTLY - use setTimeout to ensure booking dialog closes first
+          // Use updatedBooking directly (not createdBooking state) to avoid stale closure
+          const bookingToUse = updatedBooking
+          setTimeout(() => {
+            console.log('🚀 Opening payment dialog now...')
+            console.log('🔍 Booking to use:', bookingToUse)
+            console.log('🔍 Payment order:', bookingToUse.paymentOrder)
+            setCreatedBooking(bookingToUse) // Ensure state is set
+            setPaymentDialogOpen(true) // Open dialog
+            console.log('✅ Payment dialog opened for booking:', bookingToUse.id)
+          }, 100) // Small delay to ensure booking dialog closes first
+          
+          console.log('✅ Payment dialog opening scheduled for booking:', updatedBooking.id)
+        } else {
+          // No payment order - this shouldn't happen, but handle gracefully
+          console.warn('⚠️ No payment order in booking response:', {
+            hasPaymentOrder: !!paymentOrder,
+            paymentOrderKeys: paymentOrder ? Object.keys(paymentOrder) : [],
+            paymentId: bookingResponse.paymentId,
+          })
+          
+          // If paymentId exists but no paymentOrder, try to fetch it
+          if (bookingResponse.paymentId) {
+            console.log('🔄 Payment ID found, attempting to fetch payment order...')
+            // Fetch payment order from backend
+            dispatch(getPaymentOrderForRetry(bookingResponse.paymentId))
+              .then((paymentOrderAction) => {
+                if (paymentOrderAction.type.endsWith('fulfilled')) {
+                  const fetchedPaymentOrder = paymentOrderAction.payload
+                  console.log('✅ Payment order fetched:', fetchedPaymentOrder)
+                  
+                  const updatedBooking = {
+                    ...bookingResponse,
+                    paymentOrder: fetchedPaymentOrder,
+                  }
+                  
+                  // IMPORTANT: Set booking FIRST
+                  setCreatedBooking(updatedBooking)
+                  
+                  // Close booking dialog
+                  onCloseBooking()
+                  
+                  // OPEN PAYMENT DIALOG - use setTimeout to ensure state is set
+                  // Use updatedBooking directly to avoid stale closure
+                  const bookingToUse = updatedBooking
+                  setTimeout(() => {
+                    console.log('🚀 Opening payment dialog after fetching order...')
+                    console.log('🔍 Booking to use:', bookingToUse)
+                    console.log('🔍 Payment order:', bookingToUse.paymentOrder)
+                    setCreatedBooking(bookingToUse) // Ensure state is set
+                    setPaymentDialogOpen(true) // Open dialog
+                    console.log('✅ Payment dialog opened after fetching order for booking:', bookingToUse.id)
+                  }, 100)
+                  
+                  console.log('✅ Payment dialog opening scheduled after fetching order for booking:', updatedBooking.id)
+                } else {
+                  console.error('❌ Failed to fetch payment order:', paymentOrderAction.payload)
+                  alert('Payment order could not be loaded. Please try again from My Bookings page.')
+                  setBookingSuccess(true)
+                  setTimeout(() => {
+                    onCloseBooking()
+                    if (lastSearchCriteria) {
+                      dispatch(searchRides(lastSearchCriteria))
+                    }
+                  }, 2000)
+                }
+              })
+              .catch((error) => {
+                console.error('❌ Error fetching payment order:', error)
+                alert('Payment order could not be loaded. Please try again from My Bookings page.')
+                setBookingSuccess(true)
+                setTimeout(() => {
+                  onCloseBooking()
+                  if (lastSearchCriteria) {
+                    dispatch(searchRides(lastSearchCriteria))
+                  }
+                }, 2000)
+              })
+          } else {
+            // No payment at all - might be an error
+            console.error('❌ No payment information in booking response')
+            setBookingSuccess(true)
+            setTimeout(() => {
+              onCloseBooking()
+              if (lastSearchCriteria) {
+                dispatch(searchRides(lastSearchCriteria))
+              }
+            }, 2000)
+          }
+        }
+      } else {
+        // Booking creation failed
+        console.error('❌ Booking failed:', action.payload)
       }
     })
+  }
+
+  const handlePaymentSuccess = () => {
+    console.log('✅ Payment successful, closing dialogs and refreshing...')
+    setBookingSuccess(true)
+    setPaymentDialogOpen(false)
+    setCreatedBooking(null)
+    // Refresh search results
+    if (lastSearchCriteria) {
+      dispatch(searchRides(lastSearchCriteria))
+    }
+    // Show success message
+    setTimeout(() => {
+      setBookingSuccess(false) // Reset after showing success
+    }, 3000)
   }
 
   const handleClose = () => {
@@ -354,9 +510,9 @@ const SearchDialog = ({ open, onClose }) => {
       >
         <DialogTitle>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
-            <Typography variant="h5" fontWeight={700}>
+            <Box component="span" sx={{ fontWeight: 700, fontSize: '1.5rem' }}>
               Search Rides & Book Seats
-            </Typography>
+            </Box>
             <IconButton onClick={handleClose} size="small">
               <CloseIcon />
             </IconButton>
@@ -678,11 +834,21 @@ const SearchDialog = ({ open, onClose }) => {
       </Dialog>
 
       {/* Booking Dialog */}
-      <Dialog open={bookingDialogOpen} onClose={onCloseBooking} fullWidth maxWidth="sm">
-        <DialogTitle>
-          <Typography variant="h6" fontWeight={700}>
-            Book Seat
-          </Typography>
+      <Dialog 
+        open={bookingDialogOpen} 
+        onClose={(event, reason) => {
+          // Prevent closing if clicking outside when payment is about to open
+          if (reason === 'backdropClick' && createdBooking?.paymentOrder) {
+            console.log('⚠️ Prevented backdrop close - payment dialog opening')
+            return
+          }
+          onCloseBooking()
+        }} 
+        fullWidth 
+        maxWidth="sm"
+      >
+        <DialogTitle sx={{ fontWeight: 700 }}>
+          Book Seat
         </DialogTitle>
         <Box component="form" onSubmit={handleBookingSubmit(onConfirmBooking)}>
           <DialogContent dividers sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: 2 }}>
@@ -786,6 +952,19 @@ const SearchDialog = ({ open, onClose }) => {
           </Box>
         </Box>
       </Dialog>
+
+      {/* Payment Dialog - Always render, controlled by open prop */}
+      <PaymentDialog
+        open={paymentDialogOpen}
+        onClose={() => {
+          console.log('💳 Payment dialog closing...')
+          setPaymentDialogOpen(false)
+          setCreatedBooking(null)
+        }}
+        booking={createdBooking}
+        paymentOrder={createdBooking?.paymentOrder}
+        onPaymentSuccess={handlePaymentSuccess}
+      />
     </>
   )
 }

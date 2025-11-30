@@ -86,6 +86,13 @@ public class Booking {
     private String currency;
     
     /**
+     * Payment ID from Payment Service (nullable - payment may be pending)
+     * Reference to payment record, not a foreign key
+     */
+    @Column(name = "payment_id")
+    private Long paymentId;
+    
+    /**
      * Timestamp when booking was created
      */
     @Column(name = "created_at", nullable = false, updatable = false)

@@ -5,6 +5,7 @@ import com.ridesharing.rideservice.entity.RideStatus;
 import com.ridesharing.rideservice.exception.BadRequestException;
 import com.ridesharing.rideservice.service.RideService;
 import jakarta.validation.Valid;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +21,7 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/rides")
+@Slf4j
 public class RideController {
     
     @Autowired
@@ -164,6 +166,23 @@ public class RideController {
             @Valid @RequestBody BookingRequest request) {
         BookingResponse response = rideService.bookSeat(rideId, passengerId, request, authorization);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
+    }
+    
+    /**
+     * Verify payment and confirm booking
+     * POST /api/rides/bookings/{bookingId}/verify-payment
+     * Requires authentication. Called by frontend after payment completion.
+     * 
+     * @param bookingId Booking ID
+     * @param paymentVerificationRequest Payment verification request (from Razorpay)
+     * @return Updated BookingResponse with confirmed booking
+     */
+    @PostMapping("/bookings/{bookingId}/verify-payment")
+    public ResponseEntity<BookingResponse> verifyPaymentAndConfirmBooking(
+            @PathVariable Long bookingId,
+            @RequestBody Map<String, Object> paymentVerificationRequest) {
+        BookingResponse response = rideService.verifyPaymentAndConfirmBooking(bookingId, paymentVerificationRequest);
+        return new ResponseEntity<>(response, HttpStatus.OK);
     }
     
     /**

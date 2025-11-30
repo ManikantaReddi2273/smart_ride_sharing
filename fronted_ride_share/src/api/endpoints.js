@@ -20,6 +20,16 @@ export const endpoints = {
     status: (rideId) => `/rides/${rideId}/status`,
     detail: (rideId) => `/rides/${rideId}`,
     book: (rideId) => `/rides/${rideId}/book`,
+    verifyPayment: (bookingId) => `/rides/bookings/${bookingId}/verify-payment`,
+  },
+  payments: {
+    initiate: '/payments/initiate',
+    verify: '/payments/verify',
+    transactions: '/payments/transactions',
+    booking: (bookingId) => `/payments/booking/${bookingId}`,
+    paymentOrder: (paymentId) => `/payments/${paymentId}/order`,
+    wallet: (userId) => `/payments/wallet/${userId}`,
+    walletTransactions: (userId) => `/payments/wallet/${userId}/transactions`,
   },
 }
 

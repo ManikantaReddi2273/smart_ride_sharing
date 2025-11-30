@@ -790,6 +790,9 @@ public class GoogleMapsService {
                 {sourceLon, sourceLat},  // [longitude, latitude]
                 {destLon, destLat}
             });
+            // CRITICAL: Request full detailed geometry (not simplified) for accurate partial route matching
+            // Without this, polyline has only 8-12 points, missing intermediate locations
+            requestBody.put("geometry_simplify", false);
             
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
             
@@ -843,10 +846,29 @@ public class GoogleMapsService {
                 durationText = String.format("%d min%s", minutes, minutes != 1 ? "s" : "");
             }
             
+            // Extract route geometry (polyline coordinates)
+            // OpenRouteService returns geometry in routes[0].geometry.coordinates as [[lon, lat], [lon, lat], ...]
+            String routeGeometryJson = null;
+            try {
+                JsonNode geometry = route.path("geometry");
+                if (geometry.has("coordinates")) {
+                    JsonNode coordinates = geometry.path("coordinates");
+                    if (coordinates.isArray()) {
+                        // Convert to JSON string for storage
+                        routeGeometryJson = objectMapper.writeValueAsString(coordinates);
+                        log.debug("Extracted route geometry with {} coordinate points", coordinates.size());
+                    }
+                }
+            } catch (Exception ex) {
+                log.warn("Failed to extract route geometry from Directions API response: {}", ex.getMessage());
+                // Don't fail the entire request if geometry extraction fails
+            }
+            
             DistanceMatrixResult result = new DistanceMatrixResult();
             result.setDistanceKm(distanceKm);
             result.setDurationSeconds((long) durationSeconds);
             result.setDurationText(durationText);
+            result.setRouteGeometry(routeGeometryJson);
             
             log.info("Distance calculation successful: {} km ({} meters), duration: {} ({} seconds) for route: {} -> {}", 
                 distanceKm, (long)distanceMeters, durationText, (long)durationSeconds, source, destination);
@@ -889,6 +911,11 @@ public class GoogleMapsService {
         private double distanceKm;
         private long durationSeconds;
         private String durationText;
+        /**
+         * Route geometry as JSON string (array of [longitude, latitude] coordinates).
+         * Extracted from OpenRouteService Directions API response.
+         */
+        private String routeGeometry;
 
         public DistanceMatrixResult() {
         }
