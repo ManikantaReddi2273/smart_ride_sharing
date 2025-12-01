@@ -19,8 +19,13 @@ export const endpoints = {
     addressSuggestions: '/rides/address-suggestions',
     status: (rideId) => `/rides/${rideId}/status`,
     detail: (rideId) => `/rides/${rideId}`,
+    update: (rideId) => `/rides/${rideId}`,
+    cancel: (rideId) => `/rides/${rideId}`,
     book: (rideId) => `/rides/${rideId}/book`,
     verifyPayment: (bookingId) => `/rides/bookings/${bookingId}/verify-payment`,
+    verifyOtp: (bookingId) => `/rides/bookings/${bookingId}/verify-otp`,
+    sendOtp: (bookingId) => `/rides/bookings/${bookingId}/send-otp`,
+    rideBookings: (rideId) => `/rides/${rideId}/bookings`,
   },
   payments: {
     initiate: '/payments/initiate',
@@ -30,6 +35,19 @@ export const endpoints = {
     paymentOrder: (paymentId) => `/payments/${paymentId}/order`,
     wallet: (userId) => `/payments/wallet/${userId}`,
     walletTransactions: (userId) => `/payments/wallet/${userId}/transactions`,
+    bankAccounts: '/payments/bank-accounts',
+    bankAccount: (accountId) => `/payments/bank-accounts/${accountId}`,
+    setDefaultBankAccount: (accountId) => `/payments/bank-accounts/${accountId}/default`,
+    withdrawals: '/payments/withdrawals',
+    withdrawal: (withdrawalId) => `/payments/withdrawals/${withdrawalId}`,
+  },
+  reviews: {
+    passenger: (bookingId) => `/reviews/passenger/${bookingId}`,
+    driver: (bookingId) => `/reviews/driver/${bookingId}`,
+    user: (userId) => `/reviews/user/${userId}`,
+    userRating: (userId) => `/reviews/user/${userId}/rating`,
+    booking: (bookingId) => `/reviews/booking/${bookingId}`,
+    check: (bookingId) => `/reviews/booking/${bookingId}/check`,
   },
 }
 

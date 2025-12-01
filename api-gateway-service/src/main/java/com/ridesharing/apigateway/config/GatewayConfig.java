@@ -41,6 +41,12 @@ public class GatewayConfig {
                     .uri("lb://ride-service")
                 )
                 
+                // Reviews Route (handled by Ride Service)
+                .route("reviews-service", r -> r
+                    .path("/api/reviews/**")
+                    .uri("lb://ride-service")
+                )
+                
                 // Payment Service Route
                 .route("payment-service", r -> r
                     .path("/api/payments/**")

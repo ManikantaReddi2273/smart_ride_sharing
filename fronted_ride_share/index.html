@@ -5,8 +5,17 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Smart Ride Sharing System</title>
+    <!-- Polyfill for global variable (required by sockjs-client) -->
+    <script>
+      // Polyfill for global variable (required by sockjs-client)
+      if (typeof global === 'undefined') {
+        var global = globalThis || window;
+      }
+    </script>
     <!-- Razorpay Checkout Script -->
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <!-- jsPDF CDN (fallback if npm package not installed) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   </head>
   <body>
     <div id="root"></div>

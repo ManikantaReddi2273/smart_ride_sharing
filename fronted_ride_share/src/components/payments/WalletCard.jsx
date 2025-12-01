@@ -12,6 +12,7 @@ import {
 } from '@mui/material'
 import { AccountBalanceWallet, TrendingUp } from '@mui/icons-material'
 import { useDispatch, useSelector } from 'react-redux'
+import { useNavigate } from 'react-router-dom'
 import { getWalletBalance, getWalletTransactions } from '../../features/payments/paymentSlice'
 
 /**
@@ -20,6 +21,7 @@ import { getWalletBalance, getWalletTransactions } from '../../features/payments
  */
 const WalletCard = ({ userId }) => {
   const dispatch = useDispatch()
+  const navigate = useNavigate()
   const { walletBalance, walletTransactions, status, error } = useSelector(
     (state) => state.payments
   )
@@ -128,8 +130,8 @@ const WalletCard = ({ userId }) => {
                 variant="outlined"
                 fullWidth
                 onClick={() => {
-                  // Navigate to full transaction history
-                  console.log('View all transactions')
+                  // Navigate to payments page to view all transactions
+                  navigate('/payments')
                 }}
               >
                 View All Transactions

@@ -161,8 +161,11 @@ public class Ride {
      * Route geometry (polyline) as JSON array of [longitude, latitude] coordinates.
      * Stored when ride is posted to enable partial route matching.
      * Format: [[lon1, lat1], [lon2, lat2], ...]
+     * 
+     * CRITICAL: Using TEXT/CLOB to ensure full polyline JSON is stored (can be several KB).
+     * VARCHAR with default length would truncate large geometries.
      */
-    @Column(name = "route_geometry", columnDefinition = "JSON")
+    @Column(name = "route_geometry", columnDefinition = "TEXT")
     private String routeGeometry;
     
     /**

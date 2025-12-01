@@ -51,8 +51,19 @@ public class PaymentService {
      * @return Payment order response with Razorpay order details
      */
     public PaymentOrderResponse initiatePayment(PaymentRequest request) {
-        log.info("Initiating payment for bookingId={}, amount={} {}", 
-            request.getBookingId(), request.getAmount(), request.getCurrency());
+        log.info("Initiating payment for bookingId={}, amount={} {}, fare={} {}", 
+            request.getBookingId(), request.getAmount(), request.getCurrency(), 
+            request.getFare(), request.getCurrency());
+        
+        // CRITICAL: Validate that fare and amount are consistent
+        // They should be the same (both represent total fare for all seats)
+        if (request.getFare() != null && request.getAmount() != null) {
+            double fareDiff = Math.abs(request.getFare() - request.getAmount());
+            if (fareDiff > 0.01) { // Allow small rounding differences
+                log.warn("⚠️ WARNING: Fare ({}) and Amount ({}) differ by {} - they should be the same!", 
+                    request.getFare(), request.getAmount(), fareDiff);
+            }
+        }
         
         // Check if payment already exists for this booking
         Optional<Payment> existingPayment = paymentRepository.findByBookingId(request.getBookingId());
@@ -62,9 +73,30 @@ public class PaymentService {
             throw new BadRequestException("Payment already exists for this booking");
         }
         
-        // Calculate platform fee
-        Double platformFee = (request.getFare() * platformFeePercentage) / 100.0;
-        Double totalAmount = request.getFare() + platformFee;
+        // CRITICAL: Calculate platform fee on the total fare (which already includes all seats)
+        // request.getFare() is the total fare for all seats booked (fare per seat * number of seats)
+        Double fareForAllSeats = request.getFare();
+        
+        // CRITICAL: Validate fare is not null and is positive
+        if (fareForAllSeats == null || fareForAllSeats <= 0) {
+            log.error("❌ CRITICAL: Invalid fare received: {}", fareForAllSeats);
+            throw new BadRequestException("Invalid fare: " + fareForAllSeats + ". Fare must be greater than 0.");
+        }
+        
+        // CRITICAL: Log the fare received to verify it's the total for all seats
+        log.info("💰 Payment Service - Received fare: {} {} (should be total for all seats, not per-seat)", 
+            fareForAllSeats, request.getCurrency());
+        
+        Double platformFee = (fareForAllSeats * platformFeePercentage) / 100.0;
+        // Round platform fee to 2 decimal places
+        platformFee = Math.round(platformFee * 100.0) / 100.0;
+        Double totalAmount = fareForAllSeats + platformFee;
+        // Round total amount to 2 decimal places
+        totalAmount = Math.round(totalAmount * 100.0) / 100.0;
+        
+        log.info("💰 Payment calculation - Fare (all seats): {} {}, Platform fee ({}%): {} {}, Total amount: {} {}", 
+            fareForAllSeats, request.getCurrency(), platformFeePercentage, platformFee, request.getCurrency(), 
+            totalAmount, request.getCurrency());
         
         // Convert amount to paise (Razorpay uses smallest currency unit)
         Long amountInPaise = Math.round(totalAmount * 100);

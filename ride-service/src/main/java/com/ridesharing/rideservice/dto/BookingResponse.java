@@ -38,6 +38,12 @@ public class BookingResponse {
     private Long paymentId;
     private Map<String, Object> paymentOrder; // Razorpay order details (orderId, keyId, amount, etc.)
     
+    // OTP verification fields
+    private Boolean driverConfirmed;
+    private Boolean passengerConfirmed;
+    private String otp; // Only include if needed for debugging (usually not sent to frontend)
+    private Boolean hasOtp; // Indicates if OTP has been generated (without exposing the actual OTP)
+    
     // Ride details (optional - can be included in response)
     private RideResponse rideDetails;
 }

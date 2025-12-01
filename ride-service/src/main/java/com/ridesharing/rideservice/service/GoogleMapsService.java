@@ -854,8 +854,41 @@ public class GoogleMapsService {
                 if (geometry.has("coordinates")) {
                     JsonNode coordinates = geometry.path("coordinates");
                     if (coordinates.isArray()) {
-                        // Convert to JSON string for storage
-                        routeGeometryJson = objectMapper.writeValueAsString(coordinates);
+                        // CRITICAL: OpenRouteService Directions API returns coordinates in GeoJSON format: [lon, lat]
+                        // We need to ensure the stored format is consistent with our internal [lon, lat] convention
+                        // Verify first coordinate to detect format
+                        if (coordinates.size() > 0 && coordinates.get(0).isArray() && coordinates.get(0).size() >= 2) {
+                            double coord0 = coordinates.get(0).get(0).asDouble();
+                            double coord1 = coordinates.get(0).get(1).asDouble();
+                            
+                            // Sanity check: If first coord is in lat range (-90 to 90) and second is in lon range, it's [lat, lon]
+                            // If first coord is in lon range and second is in lat range, it's [lon, lat] (correct)
+                            boolean likelyLatLonFormat = (coord0 >= -90 && coord0 <= 90 && Math.abs(coord1) > 90);
+                            
+                            if (likelyLatLonFormat) {
+                                log.warn("⚠️ Detected [lat, lon] format in route geometry. Converting to [lon, lat] for consistency.");
+                                // Convert [lat, lon] to [lon, lat] format
+                                com.fasterxml.jackson.databind.node.ArrayNode convertedCoords = 
+                                    objectMapper.createArrayNode();
+                                for (JsonNode coordNode : coordinates) {
+                                    if (coordNode.isArray() && coordNode.size() >= 2) {
+                                        com.fasterxml.jackson.databind.node.ArrayNode swapped = 
+                                            objectMapper.createArrayNode();
+                                        swapped.add(coordNode.get(1)); // lon
+                                        swapped.add(coordNode.get(0)); // lat
+                                        convertedCoords.add(swapped);
+                                    }
+                                }
+                                routeGeometryJson = objectMapper.writeValueAsString(convertedCoords);
+                                log.info("✅ Converted route geometry from [lat, lon] to [lon, lat] format");
+                            } else {
+                                // Already in [lon, lat] format (GeoJSON standard)
+                                routeGeometryJson = objectMapper.writeValueAsString(coordinates);
+                            }
+                        } else {
+                            // Fallback: store as-is (assume correct format)
+                            routeGeometryJson = objectMapper.writeValueAsString(coordinates);
+                        }
                         log.debug("Extracted route geometry with {} coordinate points", coordinates.size());
                     }
                 }

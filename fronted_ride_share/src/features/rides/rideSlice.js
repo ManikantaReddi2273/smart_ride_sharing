@@ -98,6 +98,22 @@ export const searchRides = createAsyncThunk(
       // Ensure we return an array
       const results = Array.isArray(data) ? data : []
       
+      // Debug: Log driver ratings for each ride
+      if (results.length > 0) {
+        console.log('🔍 Driver ratings in search results:')
+        results.forEach((ride, index) => {
+          console.log(`  Ride ${index + 1}:`, {
+            id: ride.id,
+            driverId: ride.driverId,
+            driverName: ride.driverName,
+            driverRating: ride.driverRating,
+            driverTotalReviews: ride.driverTotalReviews,
+            ratingType: typeof ride.driverRating,
+            ratingValue: ride.driverRating
+          })
+        })
+      }
+      
       return { results, criteria }
     } catch (error) {
       console.error('Search API error:', error)
@@ -170,6 +186,68 @@ export const verifyPayment = createAsyncThunk(
     } catch (error) {
       console.error('Payment verification error:', error)
       console.error('Error response:', error?.response)
+      return rejectWithValue(handleError(error))
+    }
+  },
+)
+
+export const updateRideStatus = createAsyncThunk(
+  'rides/updateRideStatus',
+  async ({ rideId, status }, { rejectWithValue }) => {
+    try {
+      const { data } = await apiClient.put(endpoints.rides.status(rideId), null, {
+        params: { status },
+      })
+      return data
+    } catch (error) {
+      return rejectWithValue(handleError(error))
+    }
+  },
+)
+
+export const verifyOtp = createAsyncThunk(
+  'rides/verifyOtp',
+  async ({ bookingId, otp }, { rejectWithValue }) => {
+    try {
+      const { data } = await apiClient.post(endpoints.rides.verifyOtp(bookingId), { otp })
+      return data
+    } catch (error) {
+      return rejectWithValue(handleError(error))
+    }
+  },
+)
+
+export const sendOtpToPassenger = createAsyncThunk(
+  'rides/sendOtpToPassenger',
+  async (bookingId, { rejectWithValue }) => {
+    try {
+      const { data } = await apiClient.post(endpoints.rides.sendOtp(bookingId))
+      return data
+    } catch (error) {
+      return rejectWithValue(handleError(error))
+    }
+  },
+)
+
+export const updateRide = createAsyncThunk(
+  'rides/updateRide',
+  async ({ rideId, rideData }, { rejectWithValue }) => {
+    try {
+      const { data } = await apiClient.put(endpoints.rides.update(rideId), rideData)
+      return data
+    } catch (error) {
+      return rejectWithValue(handleError(error))
+    }
+  },
+)
+
+export const cancelRide = createAsyncThunk(
+  'rides/cancelRide',
+  async (rideId, { rejectWithValue }) => {
+    try {
+      const { data } = await apiClient.delete(endpoints.rides.cancel(rideId))
+      return data
+    } catch (error) {
       return rejectWithValue(handleError(error))
     }
   },
@@ -270,6 +348,78 @@ const ridesSlice = createSlice({
         }
       })
       .addCase(verifyPayment.rejected, (state, action) => {
+        state.status = 'failed'
+        state.error = action.payload
+      })
+      .addCase(updateRideStatus.pending, (state) => {
+        state.status = 'loading'
+        state.error = null
+      })
+      .addCase(updateRideStatus.fulfilled, (state, action) => {
+        state.status = 'succeeded'
+        // Update the ride in myRides array
+        const rideIndex = state.myRides.findIndex((r) => r.id === action.payload.id)
+        if (rideIndex !== -1) {
+          state.myRides[rideIndex] = action.payload
+        }
+      })
+      .addCase(updateRideStatus.rejected, (state, action) => {
+        state.status = 'failed'
+        state.error = action.payload
+      })
+      .addCase(verifyOtp.pending, (state) => {
+        state.status = 'loading'
+        state.error = null
+      })
+      .addCase(verifyOtp.fulfilled, (state, action) => {
+        state.status = 'succeeded'
+        // Refresh rides to update status
+      })
+      .addCase(verifyOtp.rejected, (state, action) => {
+        state.status = 'failed'
+        state.error = action.payload
+      })
+      .addCase(sendOtpToPassenger.pending, (state) => {
+        state.status = 'loading'
+        state.error = null
+      })
+      .addCase(sendOtpToPassenger.fulfilled, (state, action) => {
+        state.status = 'succeeded'
+        // OTP sent successfully
+      })
+      .addCase(sendOtpToPassenger.rejected, (state, action) => {
+        state.status = 'failed'
+        state.error = action.payload
+      })
+      .addCase(updateRide.pending, (state) => {
+        state.status = 'loading'
+        state.error = null
+      })
+      .addCase(updateRide.fulfilled, (state, action) => {
+        state.status = 'succeeded'
+        // Update the ride in myRides array
+        const rideIndex = state.myRides.findIndex((r) => r.id === action.payload.id)
+        if (rideIndex !== -1) {
+          state.myRides[rideIndex] = action.payload
+        }
+      })
+      .addCase(updateRide.rejected, (state, action) => {
+        state.status = 'failed'
+        state.error = action.payload
+      })
+      .addCase(cancelRide.pending, (state) => {
+        state.status = 'loading'
+        state.error = null
+      })
+      .addCase(cancelRide.fulfilled, (state, action) => {
+        state.status = 'succeeded'
+        // Update the ride in myRides array
+        const rideIndex = state.myRides.findIndex((r) => r.id === action.payload.id)
+        if (rideIndex !== -1) {
+          state.myRides[rideIndex] = action.payload
+        }
+      })
+      .addCase(cancelRide.rejected, (state, action) => {
         state.status = 'failed'
         state.error = action.payload
       })

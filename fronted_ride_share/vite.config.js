@@ -17,5 +17,12 @@ export default defineConfig({
   preview: {
     port: 5173,
     host: true
-  }
+  },
+  optimizeDeps: {
+    exclude: ['jspdf'] // Exclude from pre-bundling to avoid import analysis errors
+  },
+  define: {
+    // Polyfill for Node.js global variable (required by sockjs-client)
+    global: 'globalThis',
+  },
 })

@@ -28,8 +28,11 @@ import * as yup from 'yup'
 
 import PageContainer from '../../components/common/PageContainer'
 import { fetchProfile } from '../auth/authSlice'
+import { getUserRating } from '../reviews/reviewSlice'
 import { apiClient } from '../../api/apiClient'
 import endpoints from '../../api/endpoints'
+import RatingDisplay from '../../components/reviews/RatingDisplay'
+import StarRoundedIcon from '@mui/icons-material/StarRounded'
 
 const profileSchema = yup.object().shape({
   name: yup.string().required('Name is required'),
@@ -57,6 +60,7 @@ const vehicleSchema = yup.object().shape({
 const ProfilePage = () => {
   const dispatch = useDispatch()
   const { user, status, error } = useSelector((state) => state.auth)
+  const { userRatings } = useSelector((state) => state.reviews)
   const [vehicles, setVehicles] = useState([])
   const [vehicleDialogOpen, setVehicleDialogOpen] = useState(false)
   const [vehicleError, setVehicleError] = useState(null)
@@ -105,6 +109,15 @@ const ProfilePage = () => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchVehicles()
   }, [dispatch, fetchVehicles])
+
+  // Fetch user rating when user is available
+  useEffect(() => {
+    if (user?.id) {
+      dispatch(getUserRating(user.id))
+    }
+  }, [dispatch, user?.id])
+
+  const userRating = user?.id ? userRatings[user.id] : null
 
   useEffect(() => {
     if (user) {
@@ -173,6 +186,38 @@ const ProfilePage = () => {
               </Typography>
             </div>
           </Stack>
+
+          {/* User Rating Display */}
+          {userRating && (
+            <Box sx={{ mb: 3, p: 2, bgcolor: 'background.paper', borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
+              <Stack direction="row" alignItems="center" spacing={2}>
+                <StarRoundedIcon color="primary" />
+                <Box>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Your Rating
+                  </Typography>
+                  <Stack direction="row" alignItems="center" spacing={2} mt={0.5}>
+                    <RatingDisplay 
+                      rating={userRating.averageRating} 
+                      totalReviews={userRating.totalReviews}
+                      size="small"
+                      showCount={true}
+                    />
+                    {userRating.driverAverageRating != null && (
+                      <Typography variant="body2" color="text.secondary">
+                        • Driver: {userRating.driverAverageRating?.toFixed(1)} ⭐ ({userRating.driverReviews || 0} reviews)
+                      </Typography>
+                    )}
+                    {userRating.passengerAverageRating != null && (
+                      <Typography variant="body2" color="text.secondary">
+                        • Passenger: {userRating.passengerAverageRating?.toFixed(1)} ⭐ ({userRating.passengerReviews || 0} reviews)
+                      </Typography>
+                    )}
+                  </Stack>
+                </Box>
+              </Stack>
+            </Box>
+          )}
 
           {error && status === 'failed' && (
             <Alert severity="error" sx={{ mb: 3 }}>

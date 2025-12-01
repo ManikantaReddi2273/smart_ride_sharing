@@ -18,7 +18,7 @@ const PaymentStatusBadge = ({ status }) => {
         }
       case 'PENDING':
         return {
-          label: 'Pending',
+          label: 'Payment Pending',
           color: 'warning',
           icon: <Pending fontSize="small" />,
         }

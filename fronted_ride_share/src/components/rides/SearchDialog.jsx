@@ -7,6 +7,7 @@ import {
   Autocomplete,
   Box,
   Button,
+  Chip,
   Dialog,
   DialogContent,
   DialogTitle,
@@ -30,6 +31,7 @@ import CloseIcon from '@mui/icons-material/Close'
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import FilterListRoundedIcon from '@mui/icons-material/FilterListRounded'
+import StarRoundedIcon from '@mui/icons-material/StarRounded'
 import { useForm } from 'react-hook-form'
 import { yupResolver } from '@hookform/resolvers/yup'
 import * as yup from 'yup'
@@ -168,6 +170,7 @@ const SearchDialog = ({ open, onClose }) => {
     register: registerBooking,
     handleSubmit: handleBookingSubmit,
     reset: resetBooking,
+    watch: watchBooking, // CRITICAL: Watch booking form values to update fare calculation in real-time
     formState: { errors: bookingErrors },
   } = useForm({
     resolver: yupResolver(bookingSchema),
@@ -335,6 +338,14 @@ const SearchDialog = ({ open, onClose }) => {
         console.log('✅ Booking created successfully:', bookingResponse)
         console.log('📦 Payment Order:', bookingResponse.paymentOrder)
         console.log('💰 Payment ID:', bookingResponse.paymentId)
+        // CRITICAL: Log fare information for debugging
+        console.log('💰 Fare Debug - passengerFare:', bookingResponse.passengerFare, 
+          'seatsBooked:', bookingResponse.seatsBooked,
+          'farePerSeat (calculated):', bookingResponse.passengerFare && bookingResponse.seatsBooked 
+            ? (bookingResponse.passengerFare / bookingResponse.seatsBooked).toFixed(2) 
+            : 'N/A')
+        console.log('💰 Payment Order Amount (paise):', bookingResponse.paymentOrder?.amount,
+          'Amount (rupees):', bookingResponse.paymentOrder?.amount ? (bookingResponse.paymentOrder.amount / 100).toFixed(2) : 'N/A')
         
         // Step 2: If payment order is present, open payment dialog
         // Check for paymentOrder with orderId (handles both camelCase and snake_case)
@@ -884,9 +895,36 @@ const SearchDialog = ({ open, onClose }) => {
                     </Typography>
                   )}
                   {(selectedRide.driverName || selectedRide.driver?.name) && (
-                    <Typography variant="body2" color="text.secondary">
-                      Driver: {selectedRide.driverName || selectedRide.driver?.name}
-                    </Typography>
+                    <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
+                      <Typography variant="body2" color="text.secondary">
+                        Driver: {selectedRide.driverName || selectedRide.driver?.name}
+                      </Typography>
+                      {(() => {
+                        const rating = (selectedRide.driverRating != null && selectedRide.driverRating !== undefined && !isNaN(selectedRide.driverRating))
+                          ? Number(selectedRide.driverRating)
+                          : null
+                        const reviews = (selectedRide.driverTotalReviews != null && selectedRide.driverTotalReviews !== undefined)
+                          ? Number(selectedRide.driverTotalReviews)
+                          : 0
+                        
+                        return rating != null && rating > 0 ? (
+                          <Chip
+                            icon={<StarRoundedIcon />}
+                            label={`${rating.toFixed(1)}${reviews > 0 ? ` (${reviews})` : ''}`}
+                            size="small"
+                            color="primary"
+                            sx={{ height: 24 }}
+                          />
+                        ) : (
+                          <Chip
+                            label="No ratings yet"
+                            size="small"
+                            variant="outlined"
+                            sx={{ height: 24 }}
+                          />
+                        )
+                      })()}
+                    </Stack>
                   )}
                 </Stack>
               </Box>
@@ -897,6 +935,42 @@ const SearchDialog = ({ open, onClose }) => {
             <Typography variant="subtitle2" fontWeight={600} color="primary" mb={1}>
               Booking Details
             </Typography>
+
+            {/* Fare Calculation Display - Updates when seats change */}
+            {selectedRide && selectedRide.totalFare && (
+              <Box sx={{ p: 2, bgcolor: 'primary.50', borderRadius: 2, mb: 2 }}>
+                <Stack spacing={1}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Typography variant="body2" color="text.secondary">
+                      Fare per seat:
+                    </Typography>
+                    <Typography variant="body2" fontWeight={600}>
+                      ₹{selectedRide.totalFare.toFixed(2)}
+                    </Typography>
+                  </Stack>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Typography variant="body2" color="text.secondary">
+                      Number of seats:
+                    </Typography>
+                    <Typography variant="body2" fontWeight={600}>
+                      {watchBooking('seats') || 1}
+                    </Typography>
+                  </Stack>
+                  <Divider />
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Typography variant="body1" fontWeight={700} color="primary">
+                      Total Fare (before platform fee):
+                    </Typography>
+                    <Typography variant="h6" fontWeight={700} color="primary">
+                      ₹{((selectedRide.totalFare || 0) * (watchBooking('seats') || 1)).toFixed(2)}
+                    </Typography>
+                  </Stack>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                    Platform fee (10%) will be added during payment
+                  </Typography>
+                </Stack>
+              </Box>
+            )}
 
             {/* Booking Form - Only Seats and Notes */}
             <Grid container spacing={2}>

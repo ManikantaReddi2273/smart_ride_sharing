@@ -22,6 +22,8 @@ public class RideResponse {
     private Long driverId;
     private String driverName;
     private String driverEmail;
+    private Double driverRating; // Average rating of the driver
+    private Long driverTotalReviews; // Total number of reviews received as driver
     private Long vehicleId;
     private String vehicleModel;
     private String vehicleLicensePlate;

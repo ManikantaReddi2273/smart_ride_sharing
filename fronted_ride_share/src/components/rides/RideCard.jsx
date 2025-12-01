@@ -51,8 +51,26 @@ const RideCard = ({ ride, onBookRide }) => {
   const fare = ride.totalFare || ride.fare || ride.price || null
   const distance = ride.distanceKm || null
   const currency = ride.currency || 'INR'
-  // Placeholder rating - will be fetched from review service when integrated
-  const driverRating = ride.driverRating || ride.rating || 0
+  // Get driver rating from backend (reviews received as driver)
+  // Handle both null and undefined, and check if it's a valid number
+  const driverRating = (ride.driverRating != null && ride.driverRating !== undefined && !isNaN(ride.driverRating)) 
+    ? Number(ride.driverRating) 
+    : null
+  const driverTotalReviews = (ride.driverTotalReviews != null && ride.driverTotalReviews !== undefined) 
+    ? Number(ride.driverTotalReviews) 
+    : 0
+  
+  // Debug logging (remove in production)
+  if (ride.driverName && (ride.driverRating == null || ride.driverRating === undefined)) {
+    console.log('⚠️ RideCard: No driver rating found for ride:', {
+      rideId: ride.id,
+      driverId: ride.driverId,
+      driverName: ride.driverName,
+      driverRating: ride.driverRating,
+      driverTotalReviews: ride.driverTotalReviews,
+      fullRide: ride
+    })
+  }
   
   // Format fare display
   const formatFare = (amount) => {
@@ -107,9 +125,9 @@ const RideCard = ({ ride, onBookRide }) => {
                     variant="outlined"
                   />
                 )}
-                {driverRating > 0 && (
+                {driverRating != null && driverRating > 0 ? (
                   <Chip
-                    label={`${driverRating.toFixed(1)} ⭐`}
+                    label={`${driverRating.toFixed(1)} ⭐${driverTotalReviews > 0 ? ` (${driverTotalReviews})` : ''}`}
                     size="small"
                     color="primary"
                     sx={{ 
@@ -119,6 +137,13 @@ const RideCard = ({ ride, onBookRide }) => {
                         gap: 0.5,
                       }
                     }}
+                  />
+                ) : (
+                  <Chip
+                    label="No ratings yet"
+                    size="small"
+                    variant="outlined"
+                    color="default"
                   />
                 )}
               </Stack>

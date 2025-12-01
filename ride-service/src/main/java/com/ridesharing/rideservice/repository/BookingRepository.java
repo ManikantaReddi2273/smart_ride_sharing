@@ -61,5 +61,12 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
      * @return List of bookings with the specified status for the ride
      */
     List<Booking> findByRideIdAndStatus(Long rideId, BookingStatus status);
+    
+    /**
+     * Find all bookings by ride ID
+     * @param rideId Ride ID
+     * @return List of bookings for the ride
+     */
+    List<Booking> findByRideId(Long rideId);
 }
 

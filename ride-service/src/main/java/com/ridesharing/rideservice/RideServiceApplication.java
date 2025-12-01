@@ -5,6 +5,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * Ride Service Application
@@ -16,6 +17,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
  * - Seat booking management
  * - Ride status management
  * - Booking confirmation
+ * - Ride reminders (scheduled notifications)
  * 
  * Port: 8082
  * Database: ride_db
@@ -30,6 +32,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
 @EnableFeignClients
 @EnableJpaAuditing
 @EnableAsync
+@EnableScheduling
 public class RideServiceApplication {
 
     public static void main(String[] args) {

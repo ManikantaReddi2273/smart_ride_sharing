@@ -31,6 +31,26 @@ const PaymentDialog = ({ open, onClose, booking, paymentOrder, onPaymentSuccess 
         hasPaymentOrder: !!paymentOrder,
         paymentOrder: paymentOrder 
       })
+      // CRITICAL: Log fare information for debugging
+      if (booking) {
+        console.log('💰 Booking Fare Debug:', {
+          passengerFare: booking.passengerFare,
+          seatsBooked: booking.seatsBooked,
+          farePerSeat: booking.passengerFare && booking.seatsBooked 
+            ? (booking.passengerFare / booking.seatsBooked).toFixed(2) 
+            : 'N/A',
+          expectedTotalFare: booking.passengerFare && booking.seatsBooked && booking.passengerFare < 500
+            ? `⚠️ WARNING: Fare ${booking.passengerFare} seems too low for ${booking.seatsBooked} seats!`
+            : 'OK'
+        })
+      }
+      if (paymentOrder) {
+        console.log('💰 Payment Order Debug:', {
+          amountPaise: paymentOrder.amount,
+          amountRupees: paymentOrder.amount ? (paymentOrder.amount / 100).toFixed(2) : 'N/A',
+          currency: paymentOrder.currency
+        })
+      }
       setPaymentStatus('idle')
       setError(null)
     }
@@ -169,8 +189,94 @@ const PaymentDialog = ({ open, onClose, booking, paymentOrder, onPaymentSuccess 
                   Amount to Pay
                 </Typography>
                 <Typography variant="h5" color="primary" fontWeight={700}>
+                  {/* CRITICAL: Use paymentOrder.amount (in paise) which includes platform fee
+                      This is the correct total amount calculated by backend (fare * seats + platform fee) */}
                   {formatAmount(paymentOrder.amount)}
                 </Typography>
+                {/* Show fare breakdown if booking has passengerFare */}
+                {booking?.passengerFare && (
+                  <Stack spacing={0.5} sx={{ mt: 1 }}>
+                    <Stack direction="row" justifyContent="space-between">
+                      <Typography variant="caption" color="text.secondary">
+                        Fare ({booking.seatsBooked || 1} seat{booking.seatsBooked > 1 ? 's' : ''}):
+                      </Typography>
+                      <Typography variant="caption" fontWeight={600}>
+                        {/* CRITICAL: Use booking.passengerFare which should already be multiplied by seats
+                            If it seems like per-seat fare (fare/seats is reasonable per-seat amount), multiply */}
+                        {(() => {
+                          const seats = booking.seatsBooked || 1
+                          const fare = booking.passengerFare
+                          
+                          // CRITICAL: Smart detection - if fare divided by seats gives a reasonable per-seat amount
+                          // (between 50-500), then the fare is likely per-seat, not total
+                          // Example: ₹256.10 / 2 = ₹128.05 per seat (reasonable) → fare is per-seat
+                          // Example: ₹512.20 / 2 = ₹256.10 per seat (reasonable) → fare is total
+                          // We need to check: if (fare / seats) is in reasonable per-seat range AND
+                          // the paymentOrder.amount suggests a higher total, then fare is per-seat
+                          
+                          const farePerSeat = seats > 1 ? fare / seats : fare
+                          const totalAmountFromPayment = paymentOrder.amount / 100
+                          
+                          // If fare per seat is reasonable (50-500) AND total payment amount is significantly higher
+                          // than the fare, then the fare is likely per-seat
+                          const isReasonablePerSeat = farePerSeat >= 50 && farePerSeat <= 500
+                          const paymentAmountMuchHigher = totalAmountFromPayment > fare * 1.5
+                          const isLikelyPerSeat = seats > 1 && isReasonablePerSeat && paymentAmountMuchHigher
+                          
+                          // Alternative check: if fare * seats * 1.1 (with platform fee) is close to payment amount,
+                          // then fare is per-seat
+                          const expectedTotalIfPerSeat = (fare * seats) * 1.1
+                          const isCloseToExpected = Math.abs(totalAmountFromPayment - expectedTotalIfPerSeat) < 10
+                          const isLikelyPerSeatAlt = seats > 1 && isCloseToExpected && farePerSeat < 300
+                          
+                          const shouldMultiply = isLikelyPerSeat || isLikelyPerSeatAlt
+                          const displayFare = shouldMultiply ? fare * seats : fare
+                          
+                          if (shouldMultiply) {
+                            console.warn('⚠️ Detected per-seat fare instead of total. Correcting:', {
+                              originalFare: fare,
+                              seats: seats,
+                              farePerSeat: farePerSeat.toFixed(2),
+                              correctedFare: displayFare,
+                              paymentTotal: totalAmountFromPayment,
+                              expectedIfPerSeat: expectedTotalIfPerSeat.toFixed(2)
+                            })
+                          }
+                          
+                          return `₹${displayFare.toFixed(2)}`
+                        })()}
+                      </Typography>
+                    </Stack>
+                    <Stack direction="row" justifyContent="space-between">
+                      <Typography variant="caption" color="text.secondary">
+                        Platform fee (10%):
+                      </Typography>
+                      <Typography variant="caption" fontWeight={600}>
+                        {(() => {
+                          const seats = booking.seatsBooked || 1
+                          const fare = booking.passengerFare
+                          const farePerSeat = seats > 1 ? fare / seats : fare
+                          const totalAmountFromPayment = paymentOrder.amount / 100
+                          
+                          // Use same logic as fare detection
+                          const isReasonablePerSeat = farePerSeat >= 50 && farePerSeat <= 500
+                          const paymentAmountMuchHigher = totalAmountFromPayment > fare * 1.5
+                          const isLikelyPerSeat = seats > 1 && isReasonablePerSeat && paymentAmountMuchHigher
+                          
+                          const expectedTotalIfPerSeat = (fare * seats) * 1.1
+                          const isCloseToExpected = Math.abs(totalAmountFromPayment - expectedTotalIfPerSeat) < 10
+                          const isLikelyPerSeatAlt = seats > 1 && isCloseToExpected && farePerSeat < 300
+                          
+                          const shouldMultiply = isLikelyPerSeat || isLikelyPerSeatAlt
+                          const correctedFare = shouldMultiply ? fare * seats : fare
+                          const platformFee = totalAmountFromPayment - correctedFare
+                          
+                          return `₹${platformFee.toFixed(2)}`
+                        })()}
+                      </Typography>
+                    </Stack>
+                  </Stack>
+                )}
               </Box>
 
               <Box sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>

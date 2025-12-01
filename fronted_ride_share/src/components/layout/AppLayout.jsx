@@ -6,6 +6,8 @@ import { useDispatch, useSelector } from 'react-redux'
 import Sidebar from './Sidebar'
 import TopBar from './TopBar'
 import { fetchProfile } from '../../features/auth/authSlice'
+import NotificationProvider from '../notifications/NotificationProvider'
+import ToastNotifications from '../notifications/ToastNotifications'
 
 const drawerWidth = 260
 
@@ -20,6 +22,7 @@ const AppLayout = () => {
   }, [dispatch, token, user])
 
   return (
+    <NotificationProvider>
     <Box sx={{ display: 'flex', backgroundColor: '#E8F8F5', minHeight: '100vh' }}>
       <Sidebar width={drawerWidth} />
       <Box component="main" sx={{ flexGrow: 1 }}>
@@ -36,7 +39,9 @@ const AppLayout = () => {
           <Outlet />
         </Box>
       </Box>
+        <ToastNotifications />
     </Box>
+    </NotificationProvider>
   )
 }
 

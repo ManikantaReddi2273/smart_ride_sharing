@@ -20,6 +20,8 @@ import EventSeatRoundedIcon from '@mui/icons-material/EventSeatRounded'
 import DirectionsCarRoundedIcon from '@mui/icons-material/DirectionsCarRounded'
 import AttachMoneyRoundedIcon from '@mui/icons-material/AttachMoneyRounded'
 import StraightenRoundedIcon from '@mui/icons-material/StraightenRounded'
+import EmailRoundedIcon from '@mui/icons-material/EmailRounded'
+import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded'
 import { useDispatch, useSelector } from 'react-redux'
 
 import PageContainer from '../../components/common/PageContainer'
@@ -28,12 +30,15 @@ import PaymentStatusBadge from '../../components/payments/PaymentStatusBadge'
 import PaymentDialog from '../../components/payments/PaymentDialog'
 import { fetchMyBookings } from './rideSlice'
 import { getPaymentOrderForRetry } from '../payments/paymentSlice'
+import { createPassengerReview, checkUserReviewed } from '../reviews/reviewSlice'
+import ReviewDialog from '../../components/reviews/ReviewDialog'
+import RateReviewRoundedIcon from '@mui/icons-material/RateReviewRounded'
 import { useState } from 'react'
 
 const statusChipColor = {
   CONFIRMED: 'success',
   PENDING: 'warning',
-  COMPLETED: 'default',
+  COMPLETED: 'success', // Changed to success (green) for completed rides
   CANCELLED: 'error',
 }
 
@@ -70,8 +75,11 @@ const BookingsPage = () => {
   const dispatch = useDispatch()
   const { myBookings, status, error } = useSelector((state) => state.rides)
   const { paymentDetails } = useSelector((state) => state.payments)
+  const { loading: reviewLoading, error: reviewError } = useSelector((state) => state.reviews)
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const [selectedBooking, setSelectedBooking] = useState(null)
+  const [reviewDialogOpen, setReviewDialogOpen] = useState(false)
+  const [bookingToReview, setBookingToReview] = useState(null)
 
   useEffect(() => {
     dispatch(fetchMyBookings())
@@ -125,6 +133,52 @@ const BookingsPage = () => {
 
   const handlePaymentSuccess = () => {
     dispatch(fetchMyBookings())
+  }
+
+  const handleReviewClick = async (booking) => {
+    try {
+      // Check if already reviewed
+      const hasReviewedAction = await dispatch(checkUserReviewed(booking.id))
+      
+      // Check if the action was fulfilled and what the payload is
+      if (hasReviewedAction.type.endsWith('fulfilled')) {
+        const hasReviewed = hasReviewedAction.payload
+        console.log('Review check result:', { bookingId: booking.id, hasReviewed })
+        
+        if (hasReviewed === true) {
+          alert('You have already reviewed this driver')
+          return
+        }
+      } else if (hasReviewedAction.type.endsWith('rejected')) {
+        // If check fails, log error but allow review (might be a network issue)
+        console.error('Failed to check review status:', hasReviewedAction.payload)
+        // Continue to allow review - don't block on check failure
+      }
+      
+      setBookingToReview(booking)
+      setReviewDialogOpen(true)
+    } catch (error) {
+      console.error('Error checking review:', error)
+      // On error, allow user to proceed (might be network issue)
+      setBookingToReview(booking)
+      setReviewDialogOpen(true)
+    }
+  }
+
+  const handleSubmitReview = async ({ rating, comment }) => {
+    if (bookingToReview) {
+      const action = await dispatch(createPassengerReview({
+        bookingId: bookingToReview.id,
+        rating,
+        comment,
+      }))
+      if (action.type.endsWith('fulfilled')) {
+        setReviewDialogOpen(false)
+        setBookingToReview(null)
+        alert('Review submitted successfully!')
+        dispatch(fetchMyBookings())
+      }
+    }
   }
 
   return (
@@ -195,17 +249,42 @@ const BookingsPage = () => {
                         </Box>
                       </Stack>
                       <Stack direction="row" spacing={1} flexWrap="wrap" gap={1}>
-                        <Chip
-                          label={booking.status}
-                          color={statusChipColor[booking.status] ?? 'default'}
-                          size="small"
-                        />
+                        {/* Show booking status - use success color for completed bookings */}
+                        {booking.status === 'COMPLETED' && booking.passengerConfirmed ? (
+                          <Chip
+                            icon={<CheckCircleRoundedIcon />}
+                            label="OTP Verified & Payment Released"
+                            color="success"
+                            size="small"
+                            sx={{
+                              fontWeight: 600,
+                              bgcolor: 'success.main',
+                              color: 'white',
+                              '& .MuiChip-icon': {
+                                color: 'white',
+                              },
+                            }}
+                          />
+                        ) : (
+                          <Chip
+                            label={
+                              booking.status === 'PENDING' 
+                                ? 'Booking Pending' 
+                                : booking.status === 'CONFIRMED'
+                                ? 'Booking Confirmed'
+                                : booking.status
+                            }
+                            color={statusChipColor[booking.status] ?? 'default'}
+                            size="small"
+                          />
+                        )}
                         <Chip
                           label={`${booking.seatsBooked} seat${booking.seatsBooked > 1 ? 's' : ''}`}
                           icon={<EventSeatRoundedIcon />}
                           size="small"
                         />
-                        {booking.paymentId && (
+                        {/* Show payment status badge only if booking is not completed */}
+                        {booking.status !== 'COMPLETED' && booking.paymentId && (
                           <PaymentStatusBadge 
                             status={
                               paymentDetails?.id === booking.paymentId 
@@ -250,6 +329,26 @@ const BookingsPage = () => {
 
                 <Divider sx={{ my: 2 }} />
 
+                {/* OTP Notification - Show when driver has confirmed but passenger hasn't */}
+                {booking.driverConfirmed && !booking.passengerConfirmed && booking.status === 'CONFIRMED' && (
+                  <Alert 
+                    severity="info" 
+                    icon={<EmailRoundedIcon />}
+                    sx={{ mb: 2 }}
+                  >
+                    <Typography variant="body2" fontWeight={600}>
+                      Ride Completion OTP Sent
+                    </Typography>
+                    <Typography variant="body2">
+                      The driver has marked this ride as completed. An OTP has been sent to your email address. 
+                      Please check your email and share the OTP with the driver to confirm completion and release payment.
+                    </Typography>
+                    <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>
+                      Check your email inbox for the 6-digit OTP code. The OTP is valid for 10 minutes.
+                    </Typography>
+                  </Alert>
+                )}
+
                 {/* Fare Information */}
                 {(booking.passengerFare || booking.passengerDistanceKm) && (
                   <Box sx={{ mb: 2, p: 2, bgcolor: 'rgba(15, 139, 141, 0.04)', borderRadius: 2 }}>
@@ -261,7 +360,8 @@ const BookingsPage = () => {
                             ₹{booking.passengerFare.toFixed(2)}
                           </Typography>
                           <Typography variant="body2" color="text.secondary">
-                            Your fare
+                            {/* CRITICAL: passengerFare is already multiplied by seats (fare per seat * seats booked) */}
+                            Your fare ({booking.seatsBooked || 1} seat{booking.seatsBooked > 1 ? 's' : ''})
                           </Typography>
                         </Stack>
                       )}
@@ -313,7 +413,8 @@ const BookingsPage = () => {
                       )}
                     </Stack>
                   </Stack>
-                  {booking.status === 'PENDING' && booking.paymentId && (
+                  {/* Only show payment button if booking is not completed */}
+                  {booking.status === 'PENDING' && booking.paymentId && !booking.passengerConfirmed && (
                     <Button
                       variant="contained"
                       color="primary"
@@ -321,6 +422,36 @@ const BookingsPage = () => {
                     >
                       Complete Payment
                     </Button>
+                  )}
+                  {/* Show completed indicator if ride is completed via OTP verification */}
+                  {booking.status === 'COMPLETED' && booking.passengerConfirmed && (
+                    <Stack spacing={1}>
+                      <Chip
+                        icon={<CheckCircleRoundedIcon />}
+                        label="OTP Verified & Payment Released"
+                        color="success"
+                        sx={{
+                          fontWeight: 600,
+                          bgcolor: 'success.main',
+                          color: 'white',
+                          px: 2,
+                          py: 1,
+                          '& .MuiChip-icon': {
+                            color: 'white',
+                            fontSize: '1.2rem',
+                          },
+                        }}
+                      />
+                      <Button
+                        variant="outlined"
+                        color="primary"
+                        onClick={() => handleReviewClick(booking)}
+                        startIcon={<RateReviewRoundedIcon />}
+                        size="small"
+                      >
+                        Rate Driver
+                      </Button>
+                    </Stack>
                   )}
                 </Stack>
               </Paper>
@@ -344,6 +475,18 @@ const BookingsPage = () => {
             : null)
         }
         onPaymentSuccess={handlePaymentSuccess}
+      />
+      <ReviewDialog
+        open={reviewDialogOpen}
+        onClose={() => {
+          setReviewDialogOpen(false)
+          setBookingToReview(null)
+        }}
+        onSubmit={handleSubmitReview}
+        loading={reviewLoading}
+        error={reviewError}
+        title="Rate Driver"
+        subtitle={bookingToReview ? `Rate your experience with ${bookingToReview.rideDetails?.driverName || 'the driver'} for this ride` : ''}
       />
     </PageContainer>
   )

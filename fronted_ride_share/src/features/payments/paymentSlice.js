@@ -82,11 +82,121 @@ export const getPassengerTransactions = createAsyncThunk(
   }
 )
 
+/**
+ * Get driver transactions
+ */
+export const getDriverTransactions = createAsyncThunk(
+  'payments/getDriverTransactions',
+  async (driverId, { rejectWithValue }) => {
+    try {
+      const { data } = await apiClient.get(
+        endpoints.payments.transactions + `/driver/${driverId}`
+      )
+      return data
+    } catch (error) {
+      return rejectWithValue(handleError(error))
+    }
+  }
+)
+
+/**
+ * Get bank accounts
+ */
+export const getBankAccounts = createAsyncThunk(
+  'payments/getBankAccounts',
+  async (_, { rejectWithValue }) => {
+    try {
+      const { data } = await apiClient.get(endpoints.payments.bankAccounts)
+      return data
+    } catch (error) {
+      return rejectWithValue(handleError(error))
+    }
+  }
+)
+
+/**
+ * Add bank account
+ */
+export const addBankAccount = createAsyncThunk(
+  'payments/addBankAccount',
+  async (bankAccountData, { rejectWithValue }) => {
+    try {
+      const { data } = await apiClient.post(endpoints.payments.bankAccounts, bankAccountData)
+      return data
+    } catch (error) {
+      return rejectWithValue(handleError(error))
+    }
+  }
+)
+
+/**
+ * Delete bank account
+ */
+export const deleteBankAccount = createAsyncThunk(
+  'payments/deleteBankAccount',
+  async (accountId, { rejectWithValue }) => {
+    try {
+      await apiClient.delete(endpoints.payments.bankAccount(accountId))
+      return accountId
+    } catch (error) {
+      return rejectWithValue(handleError(error))
+    }
+  }
+)
+
+/**
+ * Set default bank account
+ */
+export const setDefaultBankAccount = createAsyncThunk(
+  'payments/setDefaultBankAccount',
+  async (accountId, { rejectWithValue }) => {
+    try {
+      const { data } = await apiClient.put(endpoints.payments.setDefaultBankAccount(accountId))
+      return data
+    } catch (error) {
+      return rejectWithValue(handleError(error))
+    }
+  }
+)
+
+/**
+ * Get withdrawals
+ */
+export const getWithdrawals = createAsyncThunk(
+  'payments/getWithdrawals',
+  async (_, { rejectWithValue }) => {
+    try {
+      const { data } = await apiClient.get(endpoints.payments.withdrawals)
+      return data
+    } catch (error) {
+      return rejectWithValue(handleError(error))
+    }
+  }
+)
+
+/**
+ * Request withdrawal
+ */
+export const requestWithdrawal = createAsyncThunk(
+  'payments/requestWithdrawal',
+  async (withdrawalData, { rejectWithValue }) => {
+    try {
+      const { data } = await apiClient.post(endpoints.payments.withdrawals, withdrawalData)
+      return data
+    } catch (error) {
+      return rejectWithValue(handleError(error))
+    }
+  }
+)
+
 const initialState = {
   walletBalance: null,
   walletTransactions: [],
   paymentDetails: null,
   passengerTransactions: [],
+  driverTransactions: [],
+  bankAccounts: [],
+  withdrawals: [],
   status: 'idle',
   error: null,
 }
@@ -103,6 +213,9 @@ const paymentSlice = createSlice({
       state.walletTransactions = []
       state.paymentDetails = null
       state.passengerTransactions = []
+      state.driverTransactions = []
+      state.bankAccounts = []
+      state.withdrawals = []
       state.error = null
     },
   },
@@ -173,6 +286,59 @@ const paymentSlice = createSlice({
       .addCase(getPassengerTransactions.rejected, (state, action) => {
         state.status = 'failed'
         state.error = action.payload
+      })
+      // Driver Transactions
+      .addCase(getDriverTransactions.pending, (state) => {
+        state.status = 'loading'
+        state.error = null
+      })
+      .addCase(getDriverTransactions.fulfilled, (state, action) => {
+        state.status = 'succeeded'
+        state.driverTransactions = action.payload
+      })
+      .addCase(getDriverTransactions.rejected, (state, action) => {
+        state.status = 'failed'
+        state.error = action.payload
+      })
+      // Bank Accounts
+      .addCase(getBankAccounts.pending, (state) => {
+        state.status = 'loading'
+        state.error = null
+      })
+      .addCase(getBankAccounts.fulfilled, (state, action) => {
+        state.status = 'succeeded'
+        state.bankAccounts = action.payload
+      })
+      .addCase(getBankAccounts.rejected, (state, action) => {
+        state.status = 'failed'
+        state.error = action.payload
+      })
+      .addCase(addBankAccount.fulfilled, (state, action) => {
+        state.bankAccounts.push(action.payload)
+      })
+      .addCase(deleteBankAccount.fulfilled, (state, action) => {
+        state.bankAccounts = state.bankAccounts.filter(acc => acc.id !== action.payload)
+      })
+      .addCase(setDefaultBankAccount.fulfilled, (state, action) => {
+        state.bankAccounts = state.bankAccounts.map(acc =>
+          acc.id === action.payload.id ? action.payload : { ...acc, isDefault: false }
+        )
+      })
+      // Withdrawals
+      .addCase(getWithdrawals.pending, (state) => {
+        state.status = 'loading'
+        state.error = null
+      })
+      .addCase(getWithdrawals.fulfilled, (state, action) => {
+        state.status = 'succeeded'
+        state.withdrawals = action.payload
+      })
+      .addCase(getWithdrawals.rejected, (state, action) => {
+        state.status = 'failed'
+        state.error = action.payload
+      })
+      .addCase(requestWithdrawal.fulfilled, (state, action) => {
+        state.withdrawals.unshift(action.payload)
       })
   },
 })

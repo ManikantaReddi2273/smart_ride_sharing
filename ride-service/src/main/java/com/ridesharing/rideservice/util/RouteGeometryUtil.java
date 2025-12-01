@@ -3,6 +3,7 @@ package com.ridesharing.rideservice.util;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -20,12 +21,22 @@ import java.util.List;
 public class RouteGeometryUtil {
     
     private static final double EARTH_RADIUS_KM = 6371.0;
-    private static final double MAX_DISTANCE_METERS = 50000.0; // 50 km threshold (required for Indian cities which are 20-40km apart)
+    
+    // Configurable threshold (default: 50km)
+    @Value("${route.matching.max-distance-meters:50000.0}")
+    private double maxDistanceMeters;
     
     private final ObjectMapper objectMapper;
     
     public RouteGeometryUtil(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
+    }
+    
+    /**
+     * Get the configured maximum distance threshold
+     */
+    public double getMaxDistanceMeters() {
+        return maxDistanceMeters;
     }
     
     /**
@@ -38,33 +49,83 @@ public class RouteGeometryUtil {
         List<double[]> coordinates = new ArrayList<>();
         
         if (routeGeometryJson == null || routeGeometryJson.trim().isEmpty()) {
-            log.warn("⚠️ Route geometry JSON is null or empty");
+            log.error("❌❌❌ CRITICAL: Route geometry JSON is null or empty");
             return coordinates;
         }
         
+        log.debug("🔍 Parsing route geometry JSON (length: {} chars)", routeGeometryJson.length());
+        
         try {
             JsonNode root = objectMapper.readTree(routeGeometryJson);
+            log.debug("   JSON root type: {}, isArray: {}", root.getNodeType(), root.isArray());
+            
             if (root.isArray()) {
+                int nodeCount = 0;
                 for (JsonNode coordNode : root) {
+                    nodeCount++;
                     if (coordNode.isArray() && coordNode.size() >= 2) {
-                        double lon = coordNode.get(0).asDouble();
-                        double lat = coordNode.get(1).asDouble();
+                        // CRITICAL FIX: OpenRouteService Directions API returns coordinates as [lon, lat] (GeoJSON format)
+                        // However, we need to verify the actual format. If stored as [lat, lon], swap them.
+                        double coord0 = coordNode.get(0).asDouble();
+                        double coord1 = coordNode.get(1).asDouble();
+                        
+                        // Detect format: If first coordinate is in latitude range (-90 to 90) and second is in longitude range (-180 to 180),
+                        // it's likely [lat, lon] format and needs swapping
+                        // If first coordinate is in longitude range and second is in latitude range, it's [lon, lat] (correct)
+                        boolean likelyLatLonFormat = (coord0 >= -90 && coord0 <= 90 && Math.abs(coord1) > 90);
+                        boolean likelyLonLatFormat = (Math.abs(coord0) > 90 && coord1 >= -90 && coord1 <= 90);
+                        
+                        double lon, lat;
+                        if (likelyLatLonFormat) {
+                            // Incoming format is [lat, lon] - swap to [lon, lat]
+                            lat = coord0;
+                            lon = coord1;
+                            log.debug("   Detected [lat, lon] format, swapped to [lon, lat] for point {}", nodeCount);
+                        } else if (likelyLonLatFormat) {
+                            // Incoming format is [lon, lat] - correct, use as-is
+                            lon = coord0;
+                            lat = coord1;
+                        } else {
+                            // Ambiguous - assume [lon, lat] (GeoJSON standard) but log warning
+                            lon = coord0;
+                            lat = coord1;
+                            if (nodeCount == 1) {
+                                log.warn("   ⚠️ Ambiguous coordinate format for first point: [{}, {}]. Assuming [lon, lat]. " +
+                                        "If matching fails, coordinates may be swapped.", coord0, coord1);
+                            }
+                        }
+                        
+                        // Internally we always use [lon, lat] format
                         coordinates.add(new double[]{lon, lat});
+                    } else {
+                        log.warn("   ⚠️ Skipping invalid coordinate node {}: isArray={}, size={}", 
+                            nodeCount, coordNode.isArray(), coordNode.size());
                     }
                 }
-                log.debug("✅ Parsed {} coordinate points from route geometry", coordinates.size());
+                log.info("✅ Parsed {} coordinate points from route geometry (processed {} nodes)", 
+                    coordinates.size(), nodeCount);
+                
+                if (coordinates.size() > 0) {
+                    log.debug("   First point: [lon={}, lat={}], Last point: [lon={}, lat={}]", 
+                        coordinates.get(0)[0], coordinates.get(0)[1],
+                        coordinates.get(coordinates.size() - 1)[0], coordinates.get(coordinates.size() - 1)[1]);
+                }
             } else {
-                log.warn("⚠️ Route geometry JSON is not an array: {}", 
-                    routeGeometryJson.length() > 100 ? routeGeometryJson.substring(0, 100) + "..." : routeGeometryJson);
+                log.error("❌❌❌ CRITICAL: Route geometry JSON is not an array! Type: {}", root.getNodeType());
+                log.error("   JSON preview (first 200 chars): {}", 
+                    routeGeometryJson.length() > 200 ? routeGeometryJson.substring(0, 200) + "..." : routeGeometryJson);
             }
         } catch (Exception ex) {
-            log.error("❌ Failed to parse route geometry JSON: {}", ex.getMessage(), ex);
-            log.error("   JSON content (first 200 chars): {}", 
-                routeGeometryJson.length() > 200 ? routeGeometryJson.substring(0, 200) + "..." : routeGeometryJson);
+            log.error("❌❌❌ CRITICAL: Failed to parse route geometry JSON: {}", ex.getMessage(), ex);
+            log.error("   Exception type: {}", ex.getClass().getName());
+            log.error("   JSON content (first 500 chars): {}", 
+                routeGeometryJson.length() > 500 ? routeGeometryJson.substring(0, 500) + "..." : routeGeometryJson);
+            ex.printStackTrace();
         }
         
         if (coordinates.isEmpty()) {
-            log.warn("⚠️ Parsed route geometry resulted in empty coordinate list");
+            log.error("❌❌❌ CRITICAL: Parsed route geometry resulted in empty coordinate list!");
+            log.error("   This will cause partial matching to fail completely!");
         }
         
         return coordinates;
@@ -113,9 +174,12 @@ public class RouteGeometryUtil {
     /**
      * Get minimum distance from point to polyline (in meters).
      * Helper method for logging and debugging.
+     * CRITICAL: This calculates the actual perpendicular distance to the nearest segment.
      */
     private double getMinDistanceToPolyline(double[] point, List<double[]> polyline) {
         if (point == null || point.length < 2 || polyline == null || polyline.isEmpty()) {
+            log.warn("⚠️ Invalid input to getMinDistanceToPolyline: point={}, polyline size={}", 
+                point != null, polyline != null ? polyline.size() : 0);
             return Double.MAX_VALUE;
         }
         
@@ -123,22 +187,29 @@ public class RouteGeometryUtil {
         double pointLon = point[0];
         double pointLat = point[1];
         
+        log.debug("   Calculating min distance from point [lon={}, lat={}] to polyline with {} points", 
+            pointLon, pointLat, polyline.size());
+        
         for (int i = 0; i < polyline.size() - 1; i++) {
             double[] segmentStart = polyline.get(i);
             double[] segmentEnd = polyline.get(i + 1);
             
+            // Calculate perpendicular distance to line segment
             double distanceToSegment = distanceToLineSegment(
                 pointLat, pointLon,
-                segmentStart[1], segmentStart[0],
+                segmentStart[1], segmentStart[0], // [lon, lat] -> (lat, lon)
                 segmentEnd[1], segmentEnd[0]
             );
             
             double distanceMeters = distanceToSegment * 1000.0;
             if (distanceMeters < minDistance) {
                 minDistance = distanceMeters;
+                log.debug("   New min distance: {}m (segment {} to {})", 
+                    String.format("%.2f", minDistance), i, i + 1);
             }
         }
         
+        log.debug("   Final min distance: {}m", String.format("%.2f", minDistance));
         return minDistance;
     }
     
@@ -202,10 +273,10 @@ public class RouteGeometryUtil {
     }
     
     /**
-     * Overloaded method with default threshold.
+     * Overloaded method with configured threshold.
      */
     public boolean isPointNearPolyline(double[] point, List<double[]> polyline) {
-        return isPointNearPolyline(point, polyline, MAX_DISTANCE_METERS);
+        return isPointNearPolyline(point, polyline, maxDistanceMeters);
     }
     
     /**
@@ -348,37 +419,82 @@ public class RouteGeometryUtil {
         
         List<double[]> polyline = parseRouteGeometry(driverRouteGeometry);
         if (polyline.isEmpty()) {
-            log.warn("❌ Driver route geometry is empty after parsing, cannot perform partial route matching");
-            log.warn("   Geometry JSON length: {} chars", driverRouteGeometry != null ? driverRouteGeometry.length() : 0);
+            log.error("❌❌❌ CRITICAL: Driver route geometry is empty after parsing, cannot perform partial route matching");
+            log.error("   Geometry JSON length: {} chars", driverRouteGeometry != null ? driverRouteGeometry.length() : 0);
+            if (driverRouteGeometry != null && driverRouteGeometry.length() > 0) {
+                log.error("   Geometry JSON preview (first 500 chars): {}", 
+                    driverRouteGeometry.length() > 500 ? driverRouteGeometry.substring(0, 500) + "..." : driverRouteGeometry);
+            }
             return false;
         }
         
-        log.info("🔍 Checking polyline matching - polyline has {} points", polyline.size());
+        log.info("🔍🔍🔍 POLYLINE MATCHING START - polyline has {} points", polyline.size());
         log.info("   Passenger source: [lon={}, lat={}]", passengerSource[0], passengerSource[1]);
         log.info("   Passenger destination: [lon={}, lat={}]", passengerDestination[0], passengerDestination[1]);
         if (polyline.size() > 0) {
             log.info("   Driver route starts: [lon={}, lat={}], ends: [lon={}, lat={}]", 
                 polyline.get(0)[0], polyline.get(0)[1],
                 polyline.get(polyline.size() - 1)[0], polyline.get(polyline.size() - 1)[1]);
+            // Log first few and last few points for debugging
+            if (polyline.size() > 4) {
+                log.info("   First 3 polyline points: [{}], [{}], [{}]", 
+                    java.util.Arrays.toString(polyline.get(0)),
+                    java.util.Arrays.toString(polyline.get(1)),
+                    java.util.Arrays.toString(polyline.get(2)));
+                log.info("   Last 3 polyline points: [{}], [{}], [{}]", 
+                    java.util.Arrays.toString(polyline.get(polyline.size() - 3)),
+                    java.util.Arrays.toString(polyline.get(polyline.size() - 2)),
+                    java.util.Arrays.toString(polyline.get(polyline.size() - 1)));
+            }
         }
         
         // Get distances to polyline
+        log.info("   Calculating distances from passenger points to polyline...");
         double sourceMinDistance = getMinDistanceToPolyline(passengerSource, polyline);
         double destMinDistance = getMinDistanceToPolyline(passengerDestination, polyline);
         
-        // Check if passenger source is near the polyline (with increased threshold for flexibility)
-        boolean sourceNearRoute = sourceMinDistance <= MAX_DISTANCE_METERS;
+        log.info("   📏 Distance results - Source: {}m, Destination: {}m (threshold: {}m)", 
+            String.format("%.2f", sourceMinDistance), 
+            String.format("%.2f", destMinDistance), 
+            maxDistanceMeters);
+        
+        // CRITICAL: Detect coordinate swap issues (distances > 1000km indicate lat/lon swapped)
+        if (sourceMinDistance > 1000000 || destMinDistance > 1000000) {
+            log.error("🚨🚨🚨 CRITICAL: Suspiciously large distance to polyline detected!");
+            log.error("   Source distance: {}m ({}km), Destination distance: {}m ({}km)", 
+                String.format("%.2f", sourceMinDistance), String.format("%.2f", sourceMinDistance / 1000.0),
+                String.format("%.2f", destMinDistance), String.format("%.2f", destMinDistance / 1000.0));
+            log.error("   This usually means LAT/LON are swapped in route geometry or passenger coordinates!");
+            log.error("   Passenger source: [lon={}, lat={}], Passenger dest: [lon={}, lat={}]", 
+                passengerSource[0], passengerSource[1], passengerDestination[0], passengerDestination[1]);
+            if (polyline.size() > 0) {
+                log.error("   Driver route first point: [lon={}, lat={}], last point: [lon={}, lat={}]", 
+                    polyline.get(0)[0], polyline.get(0)[1],
+                    polyline.get(polyline.size() - 1)[0], polyline.get(polyline.size() - 1)[1]);
+            }
+            log.error("   Please check: 1) Route geometry format, 2) Geocoding return format, 3) Coordinate parsing");
+        }
+        
+        // Check if passenger source is near the polyline (with configurable threshold)
+        boolean sourceNearRoute = sourceMinDistance <= maxDistanceMeters;
         log.info("   Passenger source near route: {} (min distance: {}m, threshold: {}m)", 
-            sourceNearRoute, String.format("%.2f", sourceMinDistance), MAX_DISTANCE_METERS);
+            sourceNearRoute, String.format("%.2f", sourceMinDistance), maxDistanceMeters);
         
         // Check if passenger destination is near the polyline
-        boolean destNearRoute = destMinDistance <= MAX_DISTANCE_METERS;
+        boolean destNearRoute = destMinDistance <= maxDistanceMeters;
         log.info("   Passenger destination near route: {} (min distance: {}m, threshold: {}m)", 
-            destNearRoute, String.format("%.2f", destMinDistance), MAX_DISTANCE_METERS);
+            destNearRoute, String.format("%.2f", destMinDistance), maxDistanceMeters);
+        
+        // CRITICAL DEBUG: If distances are close to threshold, log detailed info
+        if (sourceMinDistance > maxDistanceMeters * 0.8 || destMinDistance > maxDistanceMeters * 0.8) {
+            log.warn("   ⚠️ Distances are close to threshold - Source: {}% of threshold, Dest: {}% of threshold", 
+                String.format("%.1f", (sourceMinDistance / maxDistanceMeters) * 100),
+                String.format("%.1f", (destMinDistance / maxDistanceMeters) * 100));
+        }
         
         // SPECIAL CASE: If one endpoint is very close (within 1km), be more lenient with the other
         // This handles cases where passenger starts/ends at driver's exact start/end point
-        double lenientThreshold = MAX_DISTANCE_METERS * 1.5; // 75km if one point is very close (50km * 1.5)
+        double lenientThreshold = maxDistanceMeters * 1.5; // 1.5x configured threshold
         if (sourceMinDistance <= 1000.0 || destMinDistance <= 1000.0) {
             log.info("   One endpoint is very close (within 1km), using lenient threshold: {}m", lenientThreshold);
             sourceNearRoute = sourceMinDistance <= lenientThreshold;
@@ -388,14 +504,14 @@ public class RouteGeometryUtil {
         if (!sourceNearRoute) {
             log.info("❌ Passenger source [lon={}, lat={}] is {}m from driver's route polyline (threshold: {}m)", 
                 passengerSource[0], passengerSource[1], String.format("%.2f", sourceMinDistance), 
-                (sourceMinDistance <= 1000.0 || destMinDistance <= 1000.0) ? lenientThreshold : MAX_DISTANCE_METERS);
+                (sourceMinDistance <= 1000.0 || destMinDistance <= 1000.0) ? lenientThreshold : maxDistanceMeters);
             return false;
         }
         
         if (!destNearRoute) {
             log.info("❌ Passenger destination [lon={}, lat={}] is {}m from driver's route polyline (threshold: {}m)", 
                 passengerDestination[0], passengerDestination[1], String.format("%.2f", destMinDistance),
-                (sourceMinDistance <= 1000.0 || destMinDistance <= 1000.0) ? lenientThreshold : MAX_DISTANCE_METERS);
+                (sourceMinDistance <= 1000.0 || destMinDistance <= 1000.0) ? lenientThreshold : maxDistanceMeters);
             return false;
         }
         
@@ -405,18 +521,47 @@ public class RouteGeometryUtil {
         
         log.info("   Nearest polyline indices - Source: {}, Destination: {}", sourceIndex, destIndex);
         
-        // Validate that source comes before destination along the route
-        // Allow some flexibility: if indices are very close, check actual distances
-        boolean validOrder = sourceIndex < destIndex;
+        // FIX C: Relaxed ordering logic - don't kill match purely because of weird index ordering
+        // when both endpoints are clearly near the route
         
-        // If indices are equal or very close, use distance-based ordering
-        if (sourceIndex == destIndex || Math.abs(sourceIndex - destIndex) <= 3) {
-            // Both points are near the same segment, check actual distances along route
-            double sourceDistFromStart = getDistanceAlongPolyline(passengerSource, polyline, 0);
-            double destDistFromStart = getDistanceAlongPolyline(passengerDestination, polyline, 0);
-            validOrder = sourceDistFromStart < destDistFromStart;
-            log.info("   Indices too close ({} vs {}), using distance-based ordering: source={}m, dest={}m", 
-                sourceIndex, destIndex, String.format("%.2f", sourceDistFromStart), String.format("%.2f", destDistFromStart));
+        // SPECIAL CASE: If both endpoints are near route but indices are invalid, accept match
+        if (sourceNearRoute && destNearRoute && (sourceIndex < 0 || destIndex < 0)) {
+            log.info("✅ Both endpoints are near route but indices invalid - accepting match (index-based ordering skipped)");
+            return true;
+        }
+        
+        // Validate that source comes before destination along the route
+        // FIX C: Only enforce strict ordering if indices are far apart and reliable
+        boolean validOrder = true; // Default to true (lenient)
+        
+        // Only enforce ordering if indices are far apart and reliable
+        if (sourceIndex >= 0 && destIndex >= 0 && Math.abs(sourceIndex - destIndex) > 2) {
+            // Indices are far apart - use strict ordering
+            validOrder = sourceIndex < destIndex;
+            log.info("   Indices far apart ({} vs {}), using strict index-based ordering: validOrder={}", 
+                sourceIndex, destIndex, validOrder);
+        } else {
+            // Indices are close together or invalid - use distance-based ordering
+            if (sourceIndex == destIndex || Math.abs(sourceIndex - destIndex) <= 5) {
+                // Both points are near the same segment, check actual distances along route
+                double sourceDistFromStart = getDistanceAlongPolyline(passengerSource, polyline, 0);
+                double destDistFromStart = getDistanceAlongPolyline(passengerDestination, polyline, 0);
+                
+                // Allow small tolerance (500m) for measurement errors
+                double toleranceMeters = 500.0;
+                validOrder = sourceDistFromStart < destDistFromStart + toleranceMeters;
+                
+                log.info("   Indices close ({} vs {}), using distance-based ordering: source={}m, dest={}m, tolerance={}m, validOrder={}", 
+                    sourceIndex, destIndex, 
+                    String.format("%.2f", sourceDistFromStart), 
+                    String.format("%.2f", destDistFromStart),
+                    toleranceMeters,
+                    validOrder);
+            } else {
+                // Indices are close but not equal - be lenient
+                log.info("   Indices are close ({} vs {}), being lenient with ordering", sourceIndex, destIndex);
+                validOrder = true; // Accept match if both points are near route
+            }
         }
         
         // SPECIAL CASE: Allow reverse order if passenger route is very short
@@ -455,5 +600,92 @@ public class RouteGeometryUtil {
         }
         
         return validOrder;
+    }
+    
+    /**
+     * Generate a synthetic polyline from driver's source to destination.
+     * Creates intermediate waypoints along a great circle path for better matching.
+     * Used as fallback when route geometry is not available.
+     * 
+     * @param driverSourceLat Driver source latitude
+     * @param driverSourceLon Driver source longitude
+     * @param driverDestLat Driver destination latitude
+     * @param driverDestLon Driver destination longitude
+     * @param numWaypoints Number of intermediate waypoints to generate
+     * @return List of coordinate arrays [longitude, latitude] representing synthetic polyline
+     */
+    public List<double[]> generateSyntheticPolyline(
+            double driverSourceLat, double driverSourceLon,
+            double driverDestLat, double driverDestLon,
+            int numWaypoints) {
+        
+        List<double[]> polyline = new ArrayList<>();
+        
+        // Add source point
+        polyline.add(new double[]{driverSourceLon, driverSourceLat});
+        
+        // Generate intermediate waypoints along great circle path
+        for (int i = 1; i < numWaypoints; i++) {
+            double fraction = (double) i / numWaypoints;
+            
+            // Interpolate along great circle (not straight line - accounts for Earth's curvature)
+            double[] waypoint = interpolateGreatCircle(
+                driverSourceLat, driverSourceLon,
+                driverDestLat, driverDestLon,
+                fraction
+            );
+            polyline.add(waypoint);
+        }
+        
+        // Add destination point
+        polyline.add(new double[]{driverDestLon, driverDestLat});
+        
+        log.info("✅ Generated synthetic polyline with {} points (including {} waypoints)", 
+            polyline.size(), numWaypoints - 1);
+        
+        return polyline;
+    }
+    
+    /**
+     * Interpolate a point along a great circle path between two points.
+     * Uses spherical linear interpolation (slerp) for accurate results on Earth's surface.
+     * 
+     * @param lat1 Start latitude
+     * @param lon1 Start longitude
+     * @param lat2 End latitude
+     * @param lon2 End longitude
+     * @param fraction Fraction along path (0.0 = start, 1.0 = end)
+     * @return Interpolated point as [longitude, latitude]
+     */
+    private double[] interpolateGreatCircle(double lat1, double lon1, double lat2, double lon2, double fraction) {
+        // Convert to radians
+        double lat1Rad = Math.toRadians(lat1);
+        double lon1Rad = Math.toRadians(lon1);
+        double lat2Rad = Math.toRadians(lat2);
+        double lon2Rad = Math.toRadians(lon2);
+        
+        // Calculate angular distance
+        double d = Math.acos(
+            Math.sin(lat1Rad) * Math.sin(lat2Rad) +
+            Math.cos(lat1Rad) * Math.cos(lat2Rad) * Math.cos(lon2Rad - lon1Rad)
+        );
+        
+        if (d < 0.0001) {
+            // Points are very close, return start point
+            return new double[]{lon1, lat1};
+        }
+        
+        // Spherical linear interpolation
+        double a = Math.sin((1 - fraction) * d) / Math.sin(d);
+        double b = Math.sin(fraction * d) / Math.sin(d);
+        
+        double x = a * Math.cos(lat1Rad) * Math.cos(lon1Rad) + b * Math.cos(lat2Rad) * Math.cos(lon2Rad);
+        double y = a * Math.cos(lat1Rad) * Math.sin(lon1Rad) + b * Math.cos(lat2Rad) * Math.sin(lon2Rad);
+        double z = a * Math.sin(lat1Rad) + b * Math.sin(lat2Rad);
+        
+        double lat = Math.atan2(z, Math.sqrt(x * x + y * y));
+        double lon = Math.atan2(y, x);
+        
+        return new double[]{Math.toDegrees(lon), Math.toDegrees(lat)};
     }
 }

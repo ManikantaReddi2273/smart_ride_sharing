@@ -33,6 +33,9 @@ public class RideController {
     @Autowired
     private com.ridesharing.rideservice.service.GoogleMapsService googleMapsService;
     
+    @Autowired
+    private com.ridesharing.rideservice.service.RideReminderService rideReminderService;
+    
     /**
      * Post a new ride
      * POST /api/rides
@@ -349,6 +352,86 @@ public class RideController {
         RideStatus rideStatus = RideStatus.valueOf(status.toUpperCase());
         RideResponse response = rideService.updateRideStatus(rideId, driverId, rideStatus);
         return new ResponseEntity<>(response, HttpStatus.OK);
+    }
+    
+    /**
+     * Verify OTP and complete ride (credit wallet)
+     * POST /api/rides/bookings/{bookingId}/verify-otp
+     * Requires authentication. Driver must provide OTP received from passenger.
+     * 
+     * @param bookingId Booking ID
+     * @param driverId User ID from gateway header (X-User-Id)
+     * @param request OTP verification request containing OTP
+     * @return Updated BookingResponse with completion status
+     */
+    @PostMapping("/bookings/{bookingId}/verify-otp")
+    public ResponseEntity<Map<String, Object>> verifyOtpAndCompleteRide(
+            @PathVariable Long bookingId,
+            @RequestHeader("X-User-Id") Long driverId,
+            @RequestBody Map<String, Object> request) {
+        String otp = request.get("otp") != null ? request.get("otp").toString() : null;
+        if (otp == null || otp.trim().isEmpty()) {
+            throw new BadRequestException("OTP is required");
+        }
+        Map<String, Object> response = rideService.verifyOtpAndCompleteRide(bookingId, driverId, otp.trim());
+        return new ResponseEntity<>(response, HttpStatus.OK);
+    }
+    
+    /**
+     * Get bookings for a ride (for driver to see which bookings need OTP verification)
+     * GET /api/rides/{rideId}/bookings
+     * Requires authentication. Only the ride owner can view bookings.
+     * 
+     * @param rideId Ride ID
+     * @param driverId User ID from gateway header (X-User-Id)
+     * @return List of bookings for the ride
+     */
+    @GetMapping("/{rideId}/bookings")
+    public ResponseEntity<List<BookingResponse>> getRideBookings(
+            @PathVariable Long rideId,
+            @RequestHeader("X-User-Id") Long driverId) {
+        List<BookingResponse> bookings = rideService.getRideBookings(rideId, driverId);
+        return new ResponseEntity<>(bookings, HttpStatus.OK);
+    }
+    
+    /**
+     * Send OTP to a specific passenger for ride completion verification
+     * POST /api/rides/bookings/{bookingId}/send-otp
+     * Requires authentication. Driver must have marked ride as COMPLETED first.
+     * 
+     * @param bookingId Booking ID
+     * @param driverId User ID from gateway header (X-User-Id)
+     * @return Response with OTP sending status
+     */
+    @PostMapping("/bookings/{bookingId}/send-otp")
+    public ResponseEntity<Map<String, Object>> sendOtpToPassenger(
+            @PathVariable Long bookingId,
+            @RequestHeader("X-User-Id") Long driverId) {
+        Map<String, Object> response = rideService.sendOtpToPassenger(bookingId, driverId);
+        return new ResponseEntity<>(response, HttpStatus.OK);
+    }
+
+    /**
+     * Manually trigger ride reminder check (for testing/debugging)
+     * POST /api/rides/trigger-reminders
+     * 
+     * @return Response with reminder check status
+     */
+    @PostMapping("/trigger-reminders")
+    public ResponseEntity<Map<String, Object>> triggerReminders() {
+        try {
+            rideReminderService.triggerReminderCheck();
+            return new ResponseEntity<>(Map.of(
+                    "success", true,
+                    "message", "Ride reminder check triggered successfully"
+            ), HttpStatus.OK);
+        } catch (Exception e) {
+            log.error("Error triggering reminders: {}", e.getMessage(), e);
+            return new ResponseEntity<>(Map.of(
+                    "success", false,
+                    "message", "Error triggering reminders: " + e.getMessage()
+            ), HttpStatus.INTERNAL_SERVER_ERROR);
+        }
     }
 }
 

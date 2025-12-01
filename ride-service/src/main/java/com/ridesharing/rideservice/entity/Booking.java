@@ -93,6 +93,42 @@ public class Booking {
     private Long paymentId;
     
     /**
+     * Driver confirmation flag - true when driver marks ride as completed
+     */
+    @Column(name = "driver_confirmed")
+    private Boolean driverConfirmed = false;
+    
+    /**
+     * Passenger confirmation flag - true when passenger confirms via OTP
+     */
+    @Column(name = "passenger_confirmed")
+    private Boolean passengerConfirmed = false;
+    
+    /**
+     * OTP for ride completion verification (6-digit code)
+     */
+    @Column(name = "otp", length = 6)
+    private String otp;
+    
+    /**
+     * OTP expiration timestamp
+     */
+    @Column(name = "otp_expires_at")
+    private LocalDateTime otpExpiresAt;
+    
+    /**
+     * Timestamp when driver confirmed completion
+     */
+    @Column(name = "driver_confirmed_at")
+    private LocalDateTime driverConfirmedAt;
+    
+    /**
+     * Timestamp when passenger confirmed completion
+     */
+    @Column(name = "passenger_confirmed_at")
+    private LocalDateTime passengerConfirmedAt;
+    
+    /**
      * Timestamp when booking was created
      */
     @Column(name = "created_at", nullable = false, updatable = false)

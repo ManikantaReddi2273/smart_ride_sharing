@@ -1,14 +1,13 @@
 package com.ridesharing.paymentservice.controller;
 
-import com.ridesharing.paymentservice.dto.PaymentOrderResponse;
-import com.ridesharing.paymentservice.dto.PaymentRequest;
-import com.ridesharing.paymentservice.dto.PaymentVerificationRequest;
-import com.ridesharing.paymentservice.dto.PaymentVerificationResponse;
+import com.ridesharing.paymentservice.dto.*;
 import com.ridesharing.paymentservice.entity.Payment;
 import com.ridesharing.paymentservice.entity.Wallet;
 import com.ridesharing.paymentservice.entity.WalletTransaction;
+import com.ridesharing.paymentservice.service.BankAccountService;
 import com.ridesharing.paymentservice.service.PaymentService;
 import com.ridesharing.paymentservice.service.WalletService;
+import com.ridesharing.paymentservice.service.WithdrawalService;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,6 +35,12 @@ public class PaymentController {
     @Autowired
     private WalletService walletService;
     
+    @Autowired
+    private BankAccountService bankAccountService;
+    
+    @Autowired
+    private WithdrawalService withdrawalService;
+    
     /**
      * Initiate payment - create payment order
      * POST /api/payments/initiate
@@ -47,8 +52,17 @@ public class PaymentController {
     @PostMapping("/initiate")
     public ResponseEntity<PaymentOrderResponse> initiatePayment(
             @Valid @RequestBody PaymentRequest request) {
-        log.info("Payment initiation request: bookingId={}, amount={}", 
-            request.getBookingId(), request.getAmount());
+        // CRITICAL: Log the exact values received from Ride Service
+        log.info("📥 Payment Controller - Received payment request: bookingId={}, passengerId={}, driverId={}, amount={}, fare={}, currency={}", 
+            request.getBookingId(), request.getPassengerId(), request.getDriverId(), 
+            request.getAmount(), request.getFare(), request.getCurrency());
+        
+        // CRITICAL: Validate that fare is reasonable (not suspiciously low for multiple seats)
+        // This is a safety check - if fare is less than 100, it might be per-seat instead of total
+        if (request.getFare() != null && request.getFare() < 100) {
+            log.warn("⚠️ WARNING: Received fare {} {} seems very low - might be per-seat fare instead of total!", 
+                request.getFare(), request.getCurrency());
+        }
         
         PaymentOrderResponse response = paymentService.initiatePayment(request);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
@@ -195,6 +209,144 @@ public class PaymentController {
         Map<String, Object> response = new HashMap<>();
         response.put("message", "Wallet credited successfully");
         response.put("paymentId", paymentId);
+        return new ResponseEntity<>(response, HttpStatus.OK);
+    }
+    
+    // ==================== Bank Account Endpoints ====================
+    
+    /**
+     * Add bank account
+     * POST /api/payments/bank-accounts
+     * Requires authentication.
+     * 
+     * @param userId User ID (from JWT token)
+     * @param request Bank account request
+     * @return Bank account response
+     */
+    @PostMapping("/bank-accounts")
+    public ResponseEntity<BankAccountResponse> addBankAccount(
+            @RequestHeader("X-User-Id") Long userId,
+            @Valid @RequestBody BankAccountRequest request) {
+        BankAccountResponse response = bankAccountService.addBankAccount(userId, request);
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
+    }
+    
+    /**
+     * Get all bank accounts for user
+     * GET /api/payments/bank-accounts
+     * Requires authentication.
+     * 
+     * @param userId User ID (from JWT token)
+     * @return List of bank accounts
+     */
+    @GetMapping("/bank-accounts")
+    public ResponseEntity<List<BankAccountResponse>> getBankAccounts(
+            @RequestHeader("X-User-Id") Long userId) {
+        List<BankAccountResponse> accounts = bankAccountService.getBankAccounts(userId);
+        return new ResponseEntity<>(accounts, HttpStatus.OK);
+    }
+    
+    /**
+     * Get bank account by ID
+     * GET /api/payments/bank-accounts/{accountId}
+     * Requires authentication.
+     * 
+     * @param accountId Bank account ID
+     * @param userId User ID (from JWT token)
+     * @return Bank account response
+     */
+    @GetMapping("/bank-accounts/{accountId}")
+    public ResponseEntity<BankAccountResponse> getBankAccount(
+            @PathVariable Long accountId,
+            @RequestHeader("X-User-Id") Long userId) {
+        BankAccountResponse response = bankAccountService.getBankAccount(accountId, userId);
+        return new ResponseEntity<>(response, HttpStatus.OK);
+    }
+    
+    /**
+     * Delete bank account
+     * DELETE /api/payments/bank-accounts/{accountId}
+     * Requires authentication.
+     * 
+     * @param accountId Bank account ID
+     * @param userId User ID (from JWT token)
+     * @return Success response
+     */
+    @DeleteMapping("/bank-accounts/{accountId}")
+    public ResponseEntity<Map<String, Object>> deleteBankAccount(
+            @PathVariable Long accountId,
+            @RequestHeader("X-User-Id") Long userId) {
+        bankAccountService.deleteBankAccount(accountId, userId);
+        Map<String, Object> response = new HashMap<>();
+        response.put("message", "Bank account deleted successfully");
+        return new ResponseEntity<>(response, HttpStatus.OK);
+    }
+    
+    /**
+     * Set default bank account
+     * PUT /api/payments/bank-accounts/{accountId}/default
+     * Requires authentication.
+     * 
+     * @param accountId Bank account ID
+     * @param userId User ID (from JWT token)
+     * @return Bank account response
+     */
+    @PutMapping("/bank-accounts/{accountId}/default")
+    public ResponseEntity<BankAccountResponse> setDefaultBankAccount(
+            @PathVariable Long accountId,
+            @RequestHeader("X-User-Id") Long userId) {
+        BankAccountResponse response = bankAccountService.setDefaultBankAccount(accountId, userId);
+        return new ResponseEntity<>(response, HttpStatus.OK);
+    }
+    
+    // ==================== Withdrawal Endpoints ====================
+    
+    /**
+     * Request withdrawal
+     * POST /api/payments/withdrawals
+     * Requires authentication.
+     * 
+     * @param userId User ID (from JWT token)
+     * @param request Withdrawal request
+     * @return Withdrawal response
+     */
+    @PostMapping("/withdrawals")
+    public ResponseEntity<WithdrawalResponse> requestWithdrawal(
+            @RequestHeader("X-User-Id") Long userId,
+            @Valid @RequestBody WithdrawalRequest request) {
+        WithdrawalResponse response = withdrawalService.requestWithdrawal(userId, request);
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
+    }
+    
+    /**
+     * Get all withdrawals for user
+     * GET /api/payments/withdrawals
+     * Requires authentication.
+     * 
+     * @param userId User ID (from JWT token)
+     * @return List of withdrawals
+     */
+    @GetMapping("/withdrawals")
+    public ResponseEntity<List<WithdrawalResponse>> getWithdrawals(
+            @RequestHeader("X-User-Id") Long userId) {
+        List<WithdrawalResponse> withdrawals = withdrawalService.getWithdrawals(userId);
+        return new ResponseEntity<>(withdrawals, HttpStatus.OK);
+    }
+    
+    /**
+     * Get withdrawal by ID
+     * GET /api/payments/withdrawals/{withdrawalId}
+     * Requires authentication.
+     * 
+     * @param withdrawalId Withdrawal ID
+     * @param userId User ID (from JWT token)
+     * @return Withdrawal response
+     */
+    @GetMapping("/withdrawals/{withdrawalId}")
+    public ResponseEntity<WithdrawalResponse> getWithdrawal(
+            @PathVariable Long withdrawalId,
+            @RequestHeader("X-User-Id") Long userId) {
+        WithdrawalResponse response = withdrawalService.getWithdrawal(withdrawalId, userId);
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
 }

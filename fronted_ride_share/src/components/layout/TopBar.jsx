@@ -12,7 +12,6 @@ import {
   Typography,
 } from '@mui/material'
 import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded'
-import NotificationsNoneRoundedIcon from '@mui/icons-material/NotificationsNoneRounded'
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded'
 import AddRoadRoundedIcon from '@mui/icons-material/AddRoadRounded'
 import DirectionsCarFilledRoundedIcon from '@mui/icons-material/DirectionsCarFilledRounded'
@@ -21,6 +20,7 @@ import { useNavigate } from 'react-router-dom'
 
 import { logout } from '../../features/auth/authSlice'
 import SearchDialog from '../rides/SearchDialog'
+import NotificationBell from '../notifications/NotificationBell'
 
 const TopBar = ({ drawerWidth }) => {
   const dispatch = useDispatch()
@@ -64,11 +64,7 @@ const TopBar = ({ drawerWidth }) => {
           >
             Post Ride
           </Button>
-          <Tooltip title="Notifications">
-            <IconButton color="inherit">
-              <NotificationsNoneRoundedIcon />
-            </IconButton>
-          </Tooltip>
+          <NotificationBell />
           <Box display="flex" alignItems="center" gap={1}>
             <Avatar sx={{ bgcolor: 'primary.main' }}>
               {user?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U'}

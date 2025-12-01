@@ -11,6 +11,7 @@ import RidePostPage from './features/rides/RidePostPage'
 import RideSearchPage from './features/rides/RideSearchPage'
 import MyRidesPage from './features/rides/MyRidesPage'
 import BookingsPage from './features/rides/BookingsPage'
+import PaymentsPage from './features/payments/PaymentsPage'
 import ProfilePage from './features/profile/ProfilePage'
 
 const App = () => (
@@ -47,7 +48,7 @@ const App = () => (
       <Route path="/rides/search" element={<RideSearchPage />} />
       <Route path="/rides/my-rides" element={<MyRidesPage />} />
       <Route path="/bookings" element={<BookingsPage />} />
-      <Route path="/payments" element={<NotImplementedPage title="Payments - Not Yet Implemented" />} />
+      <Route path="/payments" element={<PaymentsPage />} />
       <Route path="/reviews" element={<NotImplementedPage title="Reviews - Not Yet Implemented" />} />
       <Route path="/settings" element={<NotImplementedPage title="Settings - Not Yet Implemented" />} />
       <Route path="/profile" element={<ProfilePage />} />
